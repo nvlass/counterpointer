@@ -10,7 +10,8 @@
 
 ## Ideas
 
-- [ ] Hint mode: for the selected bar, show which notes would break no rules (still not enforced).
+- [x] Hint mode: for the selected bar, show which notes would break no rules (still not enforced).
+- [ ] Hints that look ahead: rank candidates by whether the next bars stay solvable (search a few bars deep).
 - [ ] Three-voice counterpoint.
 - [ ] Alto/tenor clefs as an option.
 - [ ] Share an exercise as a link or text.

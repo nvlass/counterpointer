@@ -6,7 +6,9 @@
             [counterpointer.rules :as rules]
             [counterpointer.library :as lib]
             [counterpointer.score :as score]
-            [counterpointer.cheatsheet :as cheat]))
+            [counterpointer.cheatsheet :as cheat]
+            [counterpointer.guide :as guide]
+            [counterpointer.hints :as hints]))
 
 (defn <sub [q] @(rf/subscribe q))
 (defn >evt [e] (rf/dispatch e))
@@ -178,7 +180,9 @@
       [:div.v-msg
        (when voice [:span.voice (if (= voice :cp) "CP" "CF")])
        msg]
-      [:div.v-meta (bars cols voice per) (when (seq cols) " · ") (:title r)]]
+      [:div.v-meta (bars cols voice per) (when (seq cols) " · ") (:title r)]
+      (when (and (= i focus) (hints/fixes rule))
+        [:div.v-fix "Try: " (hints/fixes rule)])]
      [:button.link {:title "Turn this rule off"
                     :on-click (fn [e] (.stopPropagation e) (>evt [:settings/toggle-rule rule]))} "mute"]]))
 
@@ -208,6 +212,41 @@
           ^{:key i} [violation-row i v focus (<sub [:per])])])
      [:p.hint "Errors cost " (rules/penalty :error) ", warnings " (rules/penalty :warning)
       ". Nothing is blocked; tap a row to highlight it on the staff."]]))
+
+(defn candidate-chip [e voice col {:keys [note errors warnings msgs]}]
+  (let [iv (hints/interval-to-partner e voice col note)]
+    [:button.chip.cand {:class (cond (pos? errors) "bad" (pos? warnings) "warn")
+                        :title (if (seq msgs) (str/join "\n" msgs) "No rule broken here")
+                        :on-click #(>evt [:place voice col note])}
+     [:b (t/note-name note)] (when iv [:small iv])]))
+
+(defn hints-card []
+  (let [{:keys [hints candidates]} (<sub [:settings])]
+    (when hints
+      (let [tips (<sub [:tips])
+            sel (<sub [:sel])
+            e (<sub [:exercise])
+            cands (<sub [:candidates])
+            clean (filter #(and (zero? (:errors %)) (zero? (:warnings %))) cands)
+            warned (filter #(and (zero? (:errors %)) (pos? (:warnings %))) cands)]
+        [:div.card.hints-now
+         [:h3 "Hints" (when sel [:small (if (= :cp (:voice sel)) "counterpoint · " "cantus · ")
+                                  (bars [(:col sel)] (:voice sel) (<sub [:per]))])]
+         [:ul.tips (for [[i tip] (map-indexed vector tips)] ^{:key i} [:li tip])]
+         (when (and sel (seq (:cf e)))
+           (if candidates
+             [:div.cands
+              [:div.group-label "Notes that break no rules here"
+               [:button.link {:on-click #(>evt [:settings/set :candidates false])} "hide"]]
+              (if (seq clean)
+                [:div.chips (for [c (take 10 clean)] ^{:key (t/note-name (:note c))} [candidate-chip e (:voice sel) (:col sel) c])]
+                [:p.hint "None: every note here breaks something, often because of a neighbouring note. Try changing the notes around it."])
+              (when (seq warned)
+                [:<>
+                 [:div.group-label "Only style warnings (hover for why)"]
+                 [:div.chips (for [c (take 8 warned)] ^{:key (t/note-name (:note c))} [candidate-chip e (:voice sel) (:col sel) c])]])
+              [:p.hint "Numbers are the interval with the other voice. Judged against the notes already written on both sides."]]
+             [:button.ghost {:on-click #(>evt [:settings/set :candidates true])} "Show notes that work here"]))]))))
 
 (defn pct [k m total] (if (pos? total) (Math/round (* 100 (/ (get m k 0) total))) 0))
 
@@ -277,6 +316,7 @@
   [:<>
    [setup-card]
    [score-card]
+   [hints-card]
    [results-card]
    [stats-card]
    [library-card]])
@@ -313,6 +353,8 @@
       [:div.field [:span "When placing a note, play"]
        [seg [[:vertical "both notes"] [:note "the note"] [:off "nothing"]] hear #(>evt [:settings/set :hear %])]]
       [toggle "Interval numbers and motion between the staves" labels #(>evt [:settings/set :labels %])]
+      [toggle "Hints panel on the Write tab" (:hints settings) #(>evt [:settings/set :hints %])
+       "Advice for the selected bar, and on request the notes that break no rules there."]
       [toggle "MIDI keyboard input" midi #(>evt [:settings/set :midi %])
        (case (:state midi-state)
          :ready (if (seq (:inputs midi-state))
@@ -331,10 +373,11 @@
       [:h1 "Counterpointer"]
       (when-not (<sub [:samples]) [:span.badge "loading sounds…"])]
      [:nav
-      (for [[v label] [[:write "Write"] [:cheat "Cheat sheet"] [:rules "Rules & settings"]]]
+      (for [[v label] [[:write "Write"] [:hints "Hints"] [:cheat "Cheat sheet"] [:rules "Rules"]]]
         ^{:key v}
         [:button {:class (when (= v view) "on") :on-click #(>evt [:set-view v])} label])]
      (case view
        :cheat [cheat/view]
+       :hints [guide/view]
        :rules [rules-view]
        [write-view])]))

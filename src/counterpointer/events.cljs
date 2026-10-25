@@ -14,7 +14,9 @@
    :labels true
    :hear :vertical
    :tempo 60
-   :midi false})
+   :midi false
+   :hints true
+   :candidates false})
 
 (def centers {:treble 31 :bass 24})
 
@@ -178,6 +180,11 @@
           db (cond-> (assoc db :sel sel :last-entry nil)
                (not= step (:s old)) (put-note sel {:s step :a (t/default-alt key (mod step 7))}))]
       (with-audition db sel))))
+
+(rf/reg-event-fx :place
+  (fn [{:keys [db]} [_ voice col note]]
+    (let [sel {:voice voice :col col}]
+      (with-audition (-> (put-note db sel note) (assoc :sel sel :last-entry nil)) sel))))
 
 (rf/reg-event-db :select (fn [db [_ sel]] (assoc db :sel sel :last-entry nil)))
 

@@ -11,7 +11,7 @@ Static re-frame/shadow-cljs SPA for species counterpoint, no backend. Sibling of
 ## Conventions
 
 - `dist/` is committed on purpose (deploy by `git pull`). Run `npm run dist` before committing changes to `src/` or `resources/public/`.
-- `theory.cljs` and `rules.cljs` are pure; keep them that way.
+- `theory.cljs`, `rules.cljs` and `hints.cljs` are pure; keep them that way. `hints/candidates` tries each pitch in the selected slot through `rules/analyze` and keeps violations touching that slot; at the penultimate slot it assumes the final note if it's missing. `hints/fixes` holds the "Try:" text per rule id: add one for every new rule.
 - Notes are `{:s step :a alt}`: `:s` is diatonic (letter + 7 × octave, C4 = 28), `:a` the alteration. Intervals are named from letter distance, so spelling matters (A4 vs d5). Never store bare MIDI numbers; use `t/spell` for MIDI input.
 - Lines are vectors with `nil` for empty bars, trimmed of trailing `nil`s (`t/put`, `t/trim`). Max 32 cantus notes.
 - The counterpoint is a flat vector of *slots*, `rules/per-bar` per cantus note (1 in 1st species, 2 in 2nd). Slot `k` sounds against cantus note `(quot k per)`. Selection `:col` and violation `:cols` are slots for the counterpoint and two-voice rules, but bars for the cantus (`:voice :cf`). In 2nd species a `nil` first slot is the opening half rest and the final note is drawn as a whole note.

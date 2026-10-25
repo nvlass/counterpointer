@@ -82,7 +82,7 @@ nav {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 4px;
   padding: 4px;
   margin-bottom: 14px;
@@ -372,3 +372,19 @@ ul.rule-list { list-style: none; padding: 0; margin: 0 0 12px; }
 ul.rule-list li { padding: 7px 0; border-top: 1px solid var(--line); }
 ul.rule-list li div { font-size: .88rem; color: var(--ink-3); }
 .rule-group { margin-top: 12px; }
+
+/* ---------------------------------------------------------------- hints */
+
+.hints-now ul.tips { margin: 0 0 10px; padding-left: 18px; color: var(--ink-2); font-size: .92rem; }
+.hints-now ul.tips li { margin: 4px 0; }
+.cands .group-label { display: flex; justify-content: space-between; align-items: baseline; margin-top: 8px; }
+.cands .group-label .link { text-transform: none; letter-spacing: 0; }
+button.chip.cand { gap: 6px; }
+button.chip.cand small { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+button.chip.cand.warn { border-color: var(--warn); }
+button.chip.cand.bad { border-color: var(--bad); }
+.v-fix { font-size: .85rem; color: var(--ink-2); margin-top: 4px; }
+ol.steps { padding-left: 22px; margin: 0; }
+ol.steps li, .cheat ul li { margin: 6px 0; }
+.cheat ul { padding-left: 20px; margin: 0; }
+dl.fixes dt { margin-top: 10px; }

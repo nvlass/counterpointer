@@ -1,7 +1,8 @@
 (ns counterpointer.subs
   (:require [re-frame.core :as rf]
             [counterpointer.rules :as rules]
-            [counterpointer.events :as events]))
+            [counterpointer.events :as events]
+            [counterpointer.hints :as hints]))
 
 (doseq [k [:view :settings :exercise :sel :focus :saved :samples :play :midi :text-error :history :future]]
   (rf/reg-sub k (fn [db _] (k db))))
@@ -40,3 +41,13 @@
            acc)))
      {:notes {} :verts {} :moves {}}
      (remove #(= :info (:level %)) vs))))
+
+(rf/reg-sub :tips
+  :<- [:exercise] :<- [:sel]
+  (fn [[e sel] _] (hints/tips e sel)))
+
+(rf/reg-sub :candidates
+  :<- [:exercise] :<- [:sel] :<- [:settings]
+  (fn [[e sel s] _]
+    (when (and sel (:candidates s) (seq (:cf e)))
+      (hints/candidates e sel (:rules s) (:check-cf s)))))
