@@ -19,8 +19,9 @@
 
 ## Translations
 
-- [ ] i18n with `tongue` (tonsky/tongue), Greek first, English stays the default.
+- [x] i18n with `tongue` (tonsky/tongue), Greek first, English stays the default.
   - Dictionary ns with `:en` / `:el`; a `tr` fn from the current locale (setting, default from `navigator.language`).
   - Strings to move: views, cheat sheet, Hints tab, rule titles/descriptions and `hints/fixes`, violation messages built in `rules.cljs`, tips in `hints.cljs`. Messages that interpolate (note names, intervals, bar numbers) become tongue templates with arguments, which keeps `rules`/`hints` pure (return keys + args, translate in the view).
-  - Music terms in Greek: settle a glossary first (e.g. αντίστιξη, cantus firmus, ευθεία/αντίθετη/πλάγια/παράλληλη κίνηση, τέλεια/ατελής σύμφωνία, διαφωνία, τρίτονο, προσαγωγέας). Note names: keep C D E… or Ντο Ρε Μι…? Decide (probably a setting).
+  - Music terms in Greek: settle a glossary first (e.g. αντίστιξη, cantus firmus, ευθεία/αντίθετη/πλάγια/παράλληλη κίνηση, τέλεια/ατελής σύμφωνία, διαφωνία, τρίτονο, προσαγωγέας). Note names: keep C D E… or Ντο Ρε Μι…? Done as a setting (Rules → Settings), default from the browser language.
   - Interval ordinals and plurals (3rd/3ης, "two octaves") need per-language formatting fns, not just strings.
+  - [ ] Review the Greek glossary and interval abbreviations (Κ5, Μ3, μ3, Α4, Ε5) with a native musician.

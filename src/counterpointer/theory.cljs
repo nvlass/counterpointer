@@ -21,24 +21,30 @@
 (def acc-sym {-2 "𝄫" -1 "♭" 0 "" 1 "♯" 2 "𝄪"})
 (def acc-ascii {-2 "bb" -1 "b" 0 "" 1 "#" 2 "##"})
 
-(defn note-name [n] (str (letters (letter n)) (acc-sym (:a n)) (octave n)))
+(defn note-name
+  ([n] (note-name n letters))
+  ([n names] (str (names (letter n)) (acc-sym (:a n)) (octave n))))
+
+(defn pc-name
+  "Letter and accidental, no octave."
+  [n names]
+  (str (names (letter n)) (acc-sym (:a n))))
 
 ;; ---------------------------------------------------------------- modes
 
 (def modes
-  [{:id :dorian :name "Dorian" :steps [0 2 3 5 7 9 10] :k 2}
-   {:id :phrygian :name "Phrygian" :steps [0 1 3 5 7 8 10] :k 4}
-   {:id :lydian :name "Lydian" :steps [0 2 4 6 7 9 11] :k -1}
-   {:id :mixolydian :name "Mixolydian" :steps [0 2 4 5 7 9 10] :k 1}
-   {:id :aeolian :name "Aeolian (minor)" :steps [0 2 3 5 7 8 10] :k 3}
-   {:id :ionian :name "Ionian (major)" :steps [0 2 4 5 7 9 11] :k 0}])
+  [{:id :dorian :steps [0 2 3 5 7 9 10] :k 2}
+   {:id :phrygian :steps [0 1 3 5 7 8 10] :k 4}
+   {:id :lydian :steps [0 2 4 6 7 9 11] :k -1}
+   {:id :mixolydian :steps [0 2 4 5 7 9 10] :k 1}
+   {:id :aeolian :steps [0 2 3 5 7 8 10] :k 3}
+   {:id :ionian :steps [0 2 4 5 7 9 11] :k 0}])
 
 (def mode-by-id (into {} (map (juxt :id identity) modes)))
 
-(defn final-name [{:keys [l a]}] (str (letters l) (acc-sym a)))
-
-(defn key-name [{:keys [mode final]}]
-  (str (final-name final) " " (:name (mode-by-id mode))))
+(defn final-name
+  ([f] (final-name f letters))
+  ([{:keys [l a]} names] (str (names l) (acc-sym a))))
 
 (defn final-pc [{:keys [final]}] (mod (+ (natural-pc (:l final)) (:a final)) 12))
 
@@ -112,24 +118,7 @@
 
 (defn interval-name [{:keys [num q]}] (str (q-label q) num))
 
-(def interval-words
-  {1 "unison" 2 "2nd" 3 "3rd" 4 "4th" 5 "5th" 6 "6th" 7 "7th" 8 "octave"
-   9 "9th" 10 "10th" 11 "11th" 12 "12th" 13 "13th" 14 "14th" 15 "two octaves"})
-
-(def q-words {:P "perfect" :M "major" :m "minor" :A "augmented" :d "diminished"
-              :AA "doubly augmented" :dd "doubly diminished"})
-
-(defn interval-long [{:keys [num q g7] :as iv}]
-  (cond
-    (and (= q :A) (= 3 g7) (= num 4)) "tritone (augmented 4th)"
-    (and (= q :d) (= 4 g7) (= num 5)) "tritone (diminished 5th)"
-    (= num 15) (str (when-not (= q :P) (str (q-words q) " ")) "two octaves")
-    :else (str (q-words q) " " (interval-words num (str num "th")))))
-
-(defn with-article [s]
-  (cond (re-find #"^two" s) s
-        (re-find #"^[aeiou]" s) (str "an " s)
-        :else (str "a " s)))
+(defn tritone? [{:keys [num q]}] (or (and (= q :A) (= num 4)) (and (= q :d) (= num 5))))
 
 (defn consonance
   "Harmonic class in two voices: the 4th counts as a dissonance."
@@ -184,7 +173,7 @@
          out []]
     (cond
       (empty? toks) {:line (trim out)}
-      (>= (count out) max-notes) {:error (str "At most " max-notes " notes")}
+      (>= (count out) max-notes) {:error [:parse/too-many max-notes]}
       :else
       (let [tok (first toks)]
         (if (#{"-" "_" "."} tok)
@@ -197,4 +186,4 @@
                       (default-alt key li))
                   n {:s s :a a}]
               (recur (rest toks) s (conj out n)))
-            {:error (str "Can't read \"" tok "\"")}))))))
+            {:error [:parse/bad-token tok]}))))))

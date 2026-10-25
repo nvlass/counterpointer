@@ -1,8 +1,8 @@
 (ns counterpointer.cheatsheet
-  (:require [counterpointer.theory :as t]
-            [counterpointer.rules :as rules]
+  (:require [counterpointer.rules :as rules]
             [counterpointer.library :as lib]
-            [counterpointer.score :as score]))
+            [counterpointer.score :as score]
+            [counterpointer.i18n :refer [tr]]))
 
 (def c-major {:mode :ionian :final {:l 0 :a 0}})
 (def d-dorian {:mode :dorian :final {:l 1 :a 0}})
@@ -18,116 +18,106 @@
      [:figcaption caption]]))
 
 (def intervals
-  [["P1" "unison" 0 "C–C" :perfect]
-   ["m2" "minor 2nd" 1 "E–F" :dissonant]
-   ["M2" "major 2nd" 2 "C–D" :dissonant]
-   ["m3" "minor 3rd" 3 "D–F" :imperfect]
-   ["M3" "major 3rd" 4 "C–E" :imperfect]
-   ["P4" "perfect 4th" 5 "C–F" :dissonant]
-   ["A4 / d5" "tritone" 6 "F–B / B–F" :dissonant]
-   ["P5" "perfect 5th" 7 "C–G" :perfect]
-   ["m6" "minor 6th" 8 "E–C" :imperfect]
-   ["M6" "major 6th" 9 "C–A" :imperfect]
-   ["m7" "minor 7th" 10 "D–C" :dissonant]
-   ["M7" "major 7th" 11 "C–B" :dissonant]
-   ["P8" "octave" 12 "C–C" :perfect]])
+  [[{:num 1 :q :P} 0 [0 0] :perfect]
+   [{:num 2 :q :m} 1 [2 3] :dissonant]
+   [{:num 2 :q :M} 2 [0 1] :dissonant]
+   [{:num 3 :q :m} 3 [1 3] :imperfect]
+   [{:num 3 :q :M} 4 [0 2] :imperfect]
+   [{:num 4 :q :P} 5 [0 3] :dissonant]
+   [:tritone 6 [3 6] :dissonant]
+   [{:num 5 :q :P} 7 [0 4] :perfect]
+   [{:num 6 :q :m} 8 [2 0] :imperfect]
+   [{:num 6 :q :M} 9 [0 5] :imperfect]
+   [{:num 7 :q :m} 10 [1 0] :dissonant]
+   [{:num 7 :q :M} 11 [0 6] :dissonant]
+   [{:num 8 :q :P} 12 [0 0] :perfect]])
 
-(def class-label {:perfect "perfect consonance" :imperfect "imperfect consonance" :dissonant "dissonance"})
+(defn- pcs [[x y]] (str (tr :fmt/pc {:s x :a 0}) "–" (tr :fmt/pc {:s y :a 0})))
+
+(defn interval-row [[iv semis eg cls]]
+  [:tr
+   [:td [:b (if (= iv :tritone)
+              (str (tr :fmt/iv-name {:num 4 :q :A}) " / " (tr :fmt/iv-name {:num 5 :q :d}))
+              (tr :fmt/iv-name iv))]]
+   [:td (if (= iv :tritone) (tr :cheat/tritone) (tr :fmt/iv-long iv))]
+   [:td.num semis]
+   [:td (if (= iv :tritone) (str (pcs eg) " / " (pcs (reverse eg))) (pcs eg))]
+   [:td [:span.cls {:class (name cls)} (tr (keyword "cheat" (str "class-" (name cls))))]]])
+
+(defn rule-tags [{:keys [level presets species]}]
+  [:<>
+   [:span.tag {:class (name level)} (tr (keyword "level" (name level)))]
+   (when-not (contains? presets :relaxed) [:span.tag.preset (tr :ui/strict-only)])
+   (when-not (contains? presets :strict) [:span.tag.preset (tr :ui/relaxed-only)])
+   (when species [:span.tag.preset (tr :ui/second-species)])])
 
 (defn view []
   [:div.cheat
    [:div.card
-    [:h3 "The idea"]
-    [:p "A " [:b "cantus firmus"] " (CF, \"fixed song\") is a plain melody in whole notes. You write a second line, the "
-     [:b "counterpoint"] " (CP), against it. The goal is two lines that are each good melodies and stay independent of each other."]
-    [:p "Fux (" [:i "Gradus ad Parnassum"] ", 1725) teaches it in five " [:b "species"] ", each adding rhythm (1st and 2nd are implemented):"]
-    [:ol
-     [:li [:b "1st, note against note (1:1)"] ": only consonances."]
-     [:li [:b "2nd (2:1)"] ": two half notes per CF note; the second may be a passing dissonance."]
-     [:li [:b "3rd (4:1)"] ": four quarters; passing and neighbour tones, the cambiata."]
-     [:li [:b "4th, syncopation"] ": tied notes, suspensions that resolve down by step."]
-     [:li [:b "5th, florid"] ": all of the above mixed."]]]
+    [:h3 (tr :cheat/idea-title)]
+    (tr :cheat/idea)]
 
    [:div.card
-    [:h3 "Intervals"]
-    [:p "Count letters, both ends included: C up to E is a 3rd (C, D, E). The quality (perfect, major, minor, augmented, diminished) comes from the semitones. Beyond the octave they are " [:b "compound"] ": a 10th is a 3rd plus an octave and is treated like a 3rd."]
+    [:h3 (tr :cheat/intervals-title)]
+    (tr :cheat/intervals)
     [:table.intervals
-     [:thead [:tr [:th "Name"] [:th ""] [:th.num "Semitones"] [:th "e.g."] [:th "In two voices"]]]
+     [:thead [:tr [:th (tr :cheat/th-name)] [:th ""] [:th.num (tr :cheat/th-semitones)] [:th (tr :cheat/th-eg)] [:th (tr :cheat/th-class)]]]
      [:tbody
-      (for [[n long semis eg cls] intervals]
-        ^{:key n}
-        [:tr [:td [:b n]] [:td long] [:td.num semis] [:td eg] [:td [:span.cls {:class (name cls)} (class-label cls)]]])]]]
+      (for [[i row] (map-indexed vector intervals)]
+        ^{:key i} [interval-row row])]]]
 
    [:div.card
-    [:h3 "Consonance and dissonance"]
-    [:dl
-     [:dt [:span.cls.perfect "Perfect consonances"] " unison, 5th, octave (and 12th, 15th…)"]
-     [:dd "Stable and hollow. They frame the exercise (start and end) but too many in a row sound empty, and two of the same kind in parallel are forbidden."]
-     [:dt [:span.cls.imperfect "Imperfect consonances"] " 3rds and 6ths, major or minor (and 10ths…)"]
-     [:dd "Sweet and mobile. They should be the majority, and you can move between them freely, even in parallel (up to three in a row)."]
-     [:dt [:span.cls.dissonant "Dissonances"] " 2nds, 7ths, the 4th, the tritone, any augmented or diminished interval"]
-     [:dd "Not allowed in first species. Later species let them in only in controlled ways (passing tones, suspensions). The 4th is consonant between upper voices in fuller textures, but dissonant against the bass, and with two voices one of them is the bass."]]]
+    [:h3 (tr :cheat/consonance-title)]
+    (tr :cheat/consonance)]
 
    [:div.card
-    [:h3 "Motion between two voices"]
-    [:p "How the voices move from one interval to the next. The numbers between the staves are the intervals."]
+    [:h3 (tr :cheat/motion-title)]
+    [:p (tr :cheat/motion-intro)]
     [:div.examples
-     [example c-major "E4 G4" "C4 B3" [:span [:b "Contrary"] ": opposite directions. The best for independence."]]
-     [example c-major "E4 A4" "C4 C4" [:span [:b "Oblique"] ": one voice holds, the other moves."]]
-     [example c-major "G4 B4" "C4 D4" [:span [:b "Similar"] ": same direction, different intervals."]]
-     [example c-major "E4 F4" "C4 D4" [:span [:b "Parallel"] ": same direction, same interval. Fine for 3rds and 6ths…"]]
-     [example c-major "G4 A4" "C4 D4" [:span "…but " [:b "parallel 5ths"] " (and octaves) are forbidden: the voices fuse into one."]]
-     [example c-major "E4 A4" "C4 D4" [:span [:b "Direct (hidden) 5th"] ": " [:i "similar"] " motion into a 5th or octave (here 3→5, both rising). Strict style avoids it; modern texts allow it when the upper voice moves by step."]]]
-    [:p "Rule of thumb: approach perfect consonances by contrary or oblique motion; use similar and parallel motion only into imperfect ones."]]
+     [example c-major "E4 G4" "C4 B3" (tr :cheat/motion-contrary)]
+     [example c-major "E4 A4" "C4 C4" (tr :cheat/motion-oblique)]
+     [example c-major "G4 B4" "C4 D4" (tr :cheat/motion-similar)]
+     [example c-major "E4 F4" "C4 D4" (tr :cheat/motion-parallel)]
+     [example c-major "G4 A4" "C4 D4" (tr :cheat/motion-parallel-5)]
+     [example c-major "E4 A4" "C4 D4" (tr :cheat/motion-direct)]]
+    [:p (tr :cheat/motion-rule)]]
 
    [:div.card
-    [:h3 "The cadence"]
+    [:h3 (tr :cheat/cadence-title)]
     [:div.examples
-     [example d-dorian "C#4 D4" "E3 D3" [:span "Counterpoint above: 7→1 against 2→1, a major 6th opening to an octave. The C♯ is the raised leading tone."]]
-     [example d-dorian "E4 D4" "C#4 D4" [:span "Counterpoint below: a minor 3rd closing to a unison."]]]
-    [:p "Both voices step into the final from opposite sides, and one of them by a half step. In modes without a half step below the final (Dorian, Mixolydian, Aeolian) the 7th is raised: this is " [:b "musica ficta"] ", an accidental singers added by convention. Phrygian already has the half step above (F→E), so its 7th stays."]]
+     [example d-dorian "C#4 D4" "E3 D3" (tr :cheat/cadence-above)]
+     [example d-dorian "E4 D4" "C#4 D4" (tr :cheat/cadence-below)]]
+    (tr :cheat/cadence)]
 
    [:div.card
-    [:h3 "Second species (2:1)"]
-    [:p "Two half notes against each cantus note. The first half is the " [:b "downbeat"] " (strong), the second the " [:b "upbeat"] " (weak). Downbeats follow the first-species rules: consonant, and no parallel 5ths or octaves into them."]
-    [:p "The upbeat is where the new freedom is. A consonant upbeat may move by step or leap; a " [:b "dissonant"] " upbeat must be a " [:b "passing tone"] ": it fills in a 3rd by step, continuing in the same direction."]
+    [:h3 (tr :cheat/second-title)]
+    (tr :cheat/second)
     [:div.examples
-     [example c-major "E4 F4 G4" "C4 B3" [:span [:b "Passing tone"] ": E–F–G over C, the 4th on the upbeat is fine because it passes by step between two consonances."] 2]
-     [example c-major "E4 F4 E4" "C4 A3" [:span [:b "Neighbour tone"] ": step away and back. Fux doesn't allow it in second species; the Relaxed preset does."] 2]
-     [example c-major "G4 E4 F4" "C4 D4" [:span [:b "Consonant leap"] ": a 3rd down on the upbeat, from one consonance to another. Leaps are only possible between consonances."] 2]
-     [example c-major "G4 E4 A4" "C4 D4" [:span [:b "5ths on successive downbeats"] ": 5 – 3 – 5 still sounds like parallel 5ths; the upbeat is too short to hide them."] 2]]
-    [:p "Other habits: start with a half rest (the counterpoint enters on the upbeat, with a perfect consonance), avoid repeating a note, and end on a whole note. A unison is allowed on an upbeat but not on a downbeat in the middle. The cadence is usually 5–6–8 above (B–C♯–D over E–D in D Dorian), or 5–3–1 below."]
+     [example c-major "E4 F4 G4" "C4 B3" (tr :cheat/second-passing) 2]
+     [example c-major "E4 F4 E4" "C4 A3" (tr :cheat/second-neighbour) 2]
+     [example c-major "G4 E4 F4" "C4 D4" (tr :cheat/second-leap) 2]
+     [example c-major "G4 E4 A4" "C4 D4" (tr :cheat/second-parallels) 2]]
+    (tr :cheat/second-habits)
     [:div.examples
-     [example d-dorian "B3 C#4 D4" "E3 D3" [:span "The second-species cadence above: 5th, 6th (raised leading tone), octave."] 2]]]
+     [example d-dorian "B3 C#4 D4" "E3 D3" (tr :cheat/second-cadence) 2]]]
 
    [:div.card
-    [:h3 "Other terms"]
-    [:dl
-     [:dt "Mode, final"] [:dd "The scale. The " [:b "final"] " is its home note: D for Dorian, E Phrygian, F Lydian, G Mixolydian, A Aeolian, C Ionian on the white keys. The cantus starts and ends on it. Ionian and Aeolian are today's major and natural minor."]
-     [:dt "Step, skip, leap"] [:dd "A 2nd is a step; a 3rd is a skip; a 4th or more is a leap. Lines should move mostly by step."]
-     [:dt "Leap recovery"] [:dd "After a large leap (more than a 4th), turn around, ideally by step, to fill in the gap."]
-     [:dt "Climax"] [:dd "The highest note of a line. Ideally it occurs once, so the melody has one clear peak."]
-     [:dt "Voice crossing / overlap"] [:dd "Crossing: the upper voice goes below the lower one. Overlap: a voice moves past the note the other one just left. Both blur the two lines."]
-     [:dt "Antiparallels"] [:dd "5th to 12th or octave to 15th by contrary motion. The same perfect interval twice, just disguised."]
-     [:dt "Tritone"] [:dd "Three whole steps (F–B), the \"devil in music\". Avoided as a leap, and as the outline of a phrase."]]]
+    [:h3 (tr :cheat/terms-title)]
+    (tr :cheat/terms)]
 
    [:div.card
-    [:h3 "Rules checked"]
-    [:p.hint "Errors are the core rules every textbook agrees on. Warnings are style points that differ between books; " [:i "strict only"] " ones are Fux's stricter preferences."]
-    (for [[g label] rules/groups]
+    [:h3 (tr :cheat/rules-title)]
+    (tr :cheat/rules-hint)
+    (for [g rules/groups]
       ^{:key g}
       [:div.rule-group
-       [:div.group-label label]
+       [:div.group-label (tr (keyword "group" (name g)))]
        [:ul.rule-list
-        (for [{:keys [id title desc level presets species]} (filter #(= g (:group %)) rules/rules)]
+        (for [{:keys [id] :as r} (filter #(= g (:group %)) rules/rules)]
           ^{:key id}
-          [:li [:span.tag {:class (name level)} (name level)] " " [:b title]
-           (when-not (contains? presets :relaxed) [:span.tag.preset "strict only"])
-           (when-not (contains? presets :strict) [:span.tag.preset "relaxed only"])
-           (when species [:span.tag.preset "2nd species"])
-           [:div desc]])]])]
+          [:li [rule-tags r] " " [:b (tr (keyword "rule" (name id)))]
+           [:div (tr (keyword "rule.desc" (name id)))]])]])]
 
    [:div.card
-    [:h3 "About the score"]
-    [:p "There is no objective measure of musical quality. What exists, going back to computer counterpoint programs like Schottstaedt's (1984), is a " [:b "penalty"] ": each broken rule adds points (" (rules/penalty :error) " per error, " (rules/penalty :warning) " per warning here). Lower is closer to the style, not necessarily more beautiful."]
-    [:p "The Shape panel shows proportions teachers look at (contrary motion, imperfect consonances, steps). Compare them across your attempts at the same cantus, and play both lines: your ear is the final judge."]]])
+    [:h3 (tr :cheat/about-title)]
+    (tr :cheat/about (rules/penalty :error) (rules/penalty :warning))]])

@@ -1,132 +1,58 @@
 (ns counterpointer.rules
-  (:require [clojure.string :as str]
-            [counterpointer.theory :as t]))
+  (:require [counterpointer.theory :as t]))
 
 ;; Every rule is checked; presets only decide which ones are shown and counted.
 ;; :kind decides where the score marks it: :vertical (interval labels), :motion (between columns), :melodic (notes).
+;; Titles, descriptions and fixes live in the i18n dictionaries (:rule/<id>, :rule.desc/<id>, :fix/<id>);
+;; violation :msg is a message vector [:v/<key> & args], translated in the view.
 
 (def rules
-  [{:id :consonance :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}
-    :title "Consonant downbeats"
-    :desc "Every vertical interval on a downbeat must be a consonance: unison, 3rd, 5th, 6th, octave (or compounds like 10th, 12th). The 4th counts as a dissonance in two voices. In first species every note is a downbeat."}
-   {:id :weak-dissonance-passing :group :harmony :level :error :kind :vertical :presets #{:strict} :species #{2}
-    :title "Dissonant upbeats only as passing tones"
-    :desc "A dissonance on the second half note must be a passing tone: approached and left by step in the same direction, filling in a 3rd between two consonant downbeats (D–E–F over a held D–F–A)."}
-   {:id :weak-dissonance :group :harmony :level :error :kind :vertical :presets #{:relaxed} :species #{2}
-    :title "Dissonant upbeats as passing or neighbour tones"
-    :desc "The modern version: a dissonant upbeat may also be a neighbour tone, stepping away and back to the same note. Fux allows only passing tones."}
-   {:id :start :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}
-    :title "Open on a perfect consonance"
-    :desc "Start on a unison, 5th or octave when the counterpoint is above; unison or octave when it is below (a 5th below the cantus would suggest a different final)."}
-   {:id :end :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}
-    :title "Close on a unison or octave"
-    :desc "The last interval must be a unison or an octave, both voices on the final."}
-   {:id :imperfect-majority :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}
-    :title "Mostly imperfect consonances"
-    :desc "In the middle, 3rds and 6ths should outnumber 5ths and octaves. Perfect consonances sound hollow and stop the motion; imperfect ones keep it going."}
-   {:id :unison :group :harmony :level :warning :kind :vertical :presets #{:strict}
-    :title "No unison in the middle"
-    :desc "Fux allows the unison only on the first and last note: in the middle the two voices merge into one."}
-   {:id :spacing :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}
-    :title "Voices within a 10th"
-    :desc "Keep the voices no more than a 10th apart. A 12th is tolerated now and then; wider and they stop sounding like a pair."}
-   {:id :crossing :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}
-    :title "No voice crossing"
-    :desc "The upper voice should stay above the lower one. Crossing hides which voice is which."}
-   {:id :overlap :group :motion :level :warning :kind :motion :presets #{:strict}
-    :title "No voice overlap"
-    :desc "A voice should not move past the note the other voice just left (e.g. the lower voice rising above the upper voice's previous note)."}
+  [{:id :consonance :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}}
+   {:id :weak-dissonance-passing :group :harmony :level :error :kind :vertical :presets #{:strict} :species #{2}}
+   {:id :weak-dissonance :group :harmony :level :error :kind :vertical :presets #{:relaxed} :species #{2}}
+   {:id :start :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}}
+   {:id :end :group :harmony :level :error :kind :vertical :presets #{:strict :relaxed}}
+   {:id :imperfect-majority :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}}
+   {:id :unison :group :harmony :level :warning :kind :vertical :presets #{:strict}}
+   {:id :spacing :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}}
+   {:id :crossing :group :harmony :level :warning :kind :vertical :presets #{:strict :relaxed}}
+   {:id :overlap :group :motion :level :warning :kind :motion :presets #{:strict}}
 
-   {:id :parallel-perfect :group :motion :level :error :kind :motion :presets #{:strict :relaxed}
-    :title "No parallel 5ths or octaves"
-    :desc "Two perfect consonances of the same kind in a row, in the same direction (5→5, 8→8, 1→8, 5→12): the voices lose their independence. The central rule of counterpoint."}
-   {:id :downbeat-parallels :group :motion :level :warning :kind :vertical :presets #{:strict :relaxed} :species #{2}
-    :title "No 5ths or octaves on successive downbeats"
-    :desc "5th to 5th or octave to octave from one downbeat to the next is heard as parallel motion; a single upbeat in between doesn't hide it. Some texts accept it when the upbeat leaps a 4th or more."}
-   {:id :contrary-perfect :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}
-    :title "No 5ths/octaves by contrary motion"
-    :desc "5→12 or 8→15 in contrary motion ('antiparallels') still moves between the same perfect consonance; treated as a disguised parallel."}
-   {:id :direct-perfect :group :motion :level :warning :kind :motion :presets #{:strict}
-    :title "No direct (hidden) 5ths or octaves"
-    :desc "Approaching a 5th or octave by similar motion (both voices moving the same way). Strict style avoids it altogether."}
-   {:id :direct-perfect-leap :group :motion :level :warning :kind :motion :presets #{:relaxed}
-    :title "Direct 5ths/octaves only with a step on top"
-    :desc "The modern version of the previous rule: similar motion into a 5th or octave is fine if the upper voice moves by step, but not when it leaps."}
-   {:id :parallel-run :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}
-    :title "At most 3 parallel 3rds or 6ths in a row"
-    :desc "Parallel imperfect consonances are allowed, but a long chain of them makes the counterpoint a mere shadow of the cantus."}
-   {:id :leap-together :group :motion :level :warning :kind :motion :presets #{:strict}
-    :title "Don't leap together"
-    :desc "Both voices leaping (a 4th or more) in the same direction is heavy and undermines independence."}
-   {:id :static :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}
-    :title "Some voice should move"
-    :desc "Both voices repeating their notes means nothing happens."}
+   {:id :parallel-perfect :group :motion :level :error :kind :motion :presets #{:strict :relaxed}}
+   {:id :downbeat-parallels :group :motion :level :warning :kind :vertical :presets #{:strict :relaxed} :species #{2}}
+   {:id :contrary-perfect :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}}
+   {:id :direct-perfect :group :motion :level :warning :kind :motion :presets #{:strict}}
+   {:id :direct-perfect-leap :group :motion :level :warning :kind :motion :presets #{:relaxed}}
+   {:id :parallel-run :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}}
+   {:id :leap-together :group :motion :level :warning :kind :motion :presets #{:strict}}
+   {:id :static :group :motion :level :warning :kind :motion :presets #{:strict :relaxed}}
 
-   {:id :cadence-step :group :cadence :level :error :kind :motion :presets #{:strict :relaxed}
-    :title "Approach the final by step, in contrary motion"
-    :desc "The cadence: one voice goes 2→1, the other 7→1, so the penultimate interval is a 6th resolving to an octave, or a 3rd resolving to a unison."}
-   {:id :leading-tone :group :cadence :level :error :kind :motion :presets #{:strict :relaxed}
-    :title "Half step into the final"
-    :desc "One of the two voices must arrive at the final by a half step. In Dorian, Mixolydian and Aeolian raise the 7th (musica ficta: C♯ in D Dorian). In Phrygian the half step is already F→E from above, so the 7th stays a whole step."}
+   {:id :cadence-step :group :cadence :level :error :kind :motion :presets #{:strict :relaxed}}
+   {:id :leading-tone :group :cadence :level :error :kind :motion :presets #{:strict :relaxed}}
 
-   {:id :final-whole :group :cadence :level :warning :kind :melodic :presets #{:strict :relaxed} :species #{2}
-    :title "End on a whole note"
-    :desc "In second species the counterpoint's last note is a whole note, like the cantus."}
+   {:id :final-whole :group :cadence :level :warning :kind :melodic :presets #{:strict :relaxed} :species #{2}}
 
-   {:id :melodic-dissonance :group :melody :level :error :kind :melodic :presets #{:strict :relaxed}
-    :title "No dissonant leaps"
-    :desc "No augmented or diminished melodic intervals (the tritone, augmented 2nd, a chromatic step like F→F♯) and no 7ths."}
-   {:id :leap-size :group :melody :level :error :kind :melodic :presets #{:strict :relaxed}
-    :title "No leaps beyond an octave"
-    :desc "The octave is the largest leap allowed."}
-   {:id :sixth :group :melody :level :warning :kind :melodic :presets #{:strict}
-    :title "Only the rising minor 6th"
-    :desc "Fux allows the minor 6th upwards only; major 6ths and falling 6ths are avoided. Modern texts usually allow both."}
-   {:id :leap-recovery :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}
-    :title "Recover large leaps"
-    :desc "After a leap larger than a 4th, turn back in the opposite direction, preferably by step, to fill the gap."}
-   {:id :leap-chain :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}
-    :title "Careful with successive leaps"
-    :desc "Two leaps in the same direction should outline a consonant chord (e.g. D–F–A) and stay within an octave; three in a row are too many."}
-   {:id :repeat :group :melody :level :warning :kind :melodic :presets #{:strict}
-    :title "Avoid repeated notes"
-    :desc "Repeating a note stalls the line. Fux tolerates it rarely; strict style avoids it."}
-   {:id :tritone-outline :group :melody :level :warning :kind :melodic :presets #{:strict}
-    :title "Don't outline a tritone"
-    :desc "Even by step, a line whose turning points are a tritone apart (e.g. F up to B, then turning) has the tritone's harshness."}
-   {:id :range :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}
-    :title "Range within a 10th"
-    :desc "Each line should stay within a 10th, a comfortable singing range."}
-   {:id :climax :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}
-    :title "A single climax"
-    :desc "The highest note should appear once, so the line has a clear peak. Returning to it weakens the shape."}
-   {:id :leaps-many :group :melody :level :warning :kind :melodic :presets #{:strict}
-    :title "Mostly stepwise"
-    :desc "A good line moves mostly by step. Flagged when more than a third of the moves are leaps of a 4th or more, or more than two thirds are 3rds or larger."}
-   {:id :mode :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}
-    :title "Stay in the mode"
-    :desc "Accidentals outside the mode, except the raised leading tone at the cadence. (Fux also writes B♭ in F Lydian to avoid the tritone F–B.)"}
+   {:id :melodic-dissonance :group :melody :level :error :kind :melodic :presets #{:strict :relaxed}}
+   {:id :leap-size :group :melody :level :error :kind :melodic :presets #{:strict :relaxed}}
+   {:id :sixth :group :melody :level :warning :kind :melodic :presets #{:strict}}
+   {:id :leap-recovery :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}}
+   {:id :leap-chain :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}}
+   {:id :repeat :group :melody :level :warning :kind :melodic :presets #{:strict}}
+   {:id :tritone-outline :group :melody :level :warning :kind :melodic :presets #{:strict}}
+   {:id :range :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}}
+   {:id :climax :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}}
+   {:id :leaps-many :group :melody :level :warning :kind :melodic :presets #{:strict}}
+   {:id :mode :group :melody :level :warning :kind :melodic :presets #{:strict :relaxed}}
 
-   {:id :cf-final :group :cf :level :error :kind :melodic :presets #{:strict :relaxed}
-    :title "Cantus starts and ends on the final"
-    :desc "The cantus firmus defines the mode: it begins and ends on the final (D in D Dorian)."}
-   {:id :cf-ending :group :cf :level :error :kind :melodic :presets #{:strict :relaxed}
-    :title "Cantus ends by step"
-    :desc "The cantus reaches its final by step, usually 2→1."}
-   {:id :cf-length :group :cf :level :info :kind :melodic :presets #{:strict :relaxed}
-    :title "Cantus length 8–16"
-    :desc "Typical cantus firmi have 8 to 16 notes."}])
+   {:id :cf-final :group :cf :level :error :kind :melodic :presets #{:strict :relaxed}}
+   {:id :cf-ending :group :cf :level :error :kind :melodic :presets #{:strict :relaxed}}
+   {:id :cf-length :group :cf :level :info :kind :melodic :presets #{:strict :relaxed}}])
 
 (def rule-by-id (into {} (map (juxt :id identity) rules)))
 
-(def groups
-  [[:harmony "Intervals between the voices"]
-   [:motion "Motion between the voices"]
-   [:cadence "Cadence"]
-   [:melody "Each melodic line"]
-   [:cf "Cantus firmus"]])
+(def groups [:harmony :motion :cadence :melody :cf])
 
-(def presets {:strict "Strict (Fux)" :relaxed "Relaxed (modern)"})
+(def presets [:strict :relaxed])
 
 (defn preset-rules [p] (set (keep #(when (contains? (:presets %) p) (:id %)) rules)))
 
@@ -184,13 +110,7 @@
 
 (defn- span [i j] (vec (range i (inc j))))
 
-(defn- pair-label [m] (str (:num (:a m)) " → " (:num (:b m))))
-
 ;; ---------------------------------------------------------------- vertical rules
-
-(def perfect-word {0 "octaves" 4 "5ths"})
-
-(defn- perfect-kind [v] (if (zero? (:g v)) "unisons" (perfect-word (:g7 v))))
 
 (defmulti check (fn [id _] id))
 
@@ -199,20 +119,18 @@
 (defmethod check :consonance [_ {:keys [verts]}]
   (for [v verts :when (and v (zero? (:beat v)) (= :dissonant (:cons v)))]
     {:cols [(:i v)]
-     :msg (str (t/interval-name v) " (" (t/interval-long v) ") is a dissonance"
-               (when (= 3 (:g7 v)) "; the 4th is dissonant in two voices"))}))
+     :msg [:v/consonance v]}))
 
 (defmethod check :start [_ {:keys [verts above? per]}]
   (when-let [v (first (filter some? (take per verts)))]
     (when-not (and (= :perfect (:cons v)) (or above? (zero? (:g7 v))))
       [{:cols [(:i v)]
-        :msg (str "Opens on " (t/interval-name v) "; use "
-                  (if above? "a unison, 5th or octave" "a unison or octave (counterpoint below)"))}])))
+        :msg [:v/start v above?]}])))
 
 (defmethod check :end [_ {:keys [verts n final-slot]}]
   (when-let [v (and (> n 1) (get verts final-slot))]
     (when-not (and (= :perfect (:cons v)) (zero? (:g7 v)))
-      [{:cols [final-slot] :msg (str "Ends on " (t/interval-name v) "; end on a unison or octave")}])))
+      [{:cols [final-slot] :msg [:v/end v]}])))
 
 (defn- middle
   "Downbeat verticals between the first and last bar."
@@ -221,7 +139,7 @@
 
 (defmethod check :unison [_ {:keys [per] :as ctx}]
   (for [v (middle ctx) :when (zero? (:g v))]
-    {:cols [(:i v)] :msg (if (> per 1) "Unison on a downbeat in the middle" "Unison in the middle of the exercise")}))
+    {:cols [(:i v)] :msg [:v/unison (> per 1)]}))
 
 (defmethod check :imperfect-majority [_ ctx]
   (let [vs (middle ctx)
@@ -229,15 +147,15 @@
         imp (filter #(= :imperfect (:cons %)) vs)]
     (when (and (>= (+ (count perf) (count imp)) 4) (> (count perf) (count imp)))
       [{:cols (mapv :i perf)
-        :msg (str (count perf) " perfect vs. " (count imp) " imperfect consonances on the downbeats in the middle")}])))
+        :msg [:v/imperfect-majority (count perf) (count imp)]}])))
 
 (defmethod check :spacing [_ {:keys [verts]}]
   (for [v verts :when (and v (> (:g v) 9))]
-    {:cols [(:i v)] :msg (str "The voices are " (t/with-article (t/interval-long v)) " apart")}))
+    {:cols [(:i v)] :msg [:v/spacing v]}))
 
 (defmethod check :crossing [_ {:keys [upper lower verts]}]
   (for [v verts :when (and v (< (t/midi (upper (:i v))) (t/midi (lower (:i v)))))]
-    {:cols [(:i v)] :msg "The upper voice is below the lower voice"}))
+    {:cols [(:i v)] :msg [:v/crossing]}))
 
 (defmethod check :overlap [_ {:keys [upper lower motions]}]
   (for [{:keys [i]} motions
@@ -246,9 +164,7 @@
               down (< (t/midi (upper j)) (t/midi (lower i)))]
         :when (or up down)]
     {:cols [i j]
-     :msg (if up
-            "The lower voice moves above the upper voice's previous note"
-            "The upper voice moves below the lower voice's previous note")}))
+     :msg [:v/overlap up]}))
 
 ;; ---------------------------------------------------------------- weak beats (2nd species)
 
@@ -264,10 +180,7 @@
               neighbor? (and steps? (= (:dir a) (- (:dir b))))]
         :when (not (or passing? (and neighbor-ok? neighbor?)))]
     {:cols [(dec i) i (inc i)]
-     :msg (str (t/interval-name v) " on the upbeat "
-               (if neighbor?
-                 "is a neighbour tone; strict style allows only passing tones"
-                 "is not a passing tone (approach and leave it by step, same direction)"))}))
+     :msg [:v/weak-dissonance v neighbor?]}))
 
 (defmethod check :weak-dissonance-passing [_ ctx] (weak-dissonances ctx false))
 
@@ -281,11 +194,11 @@
           :when (and w (= :perfect (:cons v)) (= :perfect (:cons w)) (= (:g7 v) (:g7 w))
                      (not= (t/midi (cf (:bar v))) (t/midi (cf (:bar w)))))]
       {:cols (span (:i v) (:i w))
-       :msg (str (str/capitalize (perfect-kind w)) " on successive downbeats (" (:num v) " → " (:num w) ")")})))
+       :msg [:v/downbeat-parallels v w]})))
 
 (defmethod check :final-whole [_ {:keys [per n cp final-slot]}]
   (when (and (> per 1) (> n 1) (get cp (inc final-slot)))
-    [{:cols [(inc final-slot)] :msg "The last bar should be a single whole note"}]))
+    [{:cols [(inc final-slot)] :msg [:v/final-whole]}]))
 
 ;; ---------------------------------------------------------------- motion rules
 
@@ -295,26 +208,26 @@
 (defmethod check :parallel-perfect [_ {:keys [motions]}]
   (for [m motions :when (and (= :parallel (:kind m)) (same-perfect? m))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str "Parallel " (perfect-kind (:b m)) " (" (pair-label m) ")")}))
+     :msg [:v/parallel-perfect (:a m) (:b m)]}))
 
 (defmethod check :contrary-perfect [_ {:keys [motions]}]
   (for [m motions :when (and (= :contrary (:kind m)) (same-perfect? m))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str (str/capitalize (perfect-kind (:b m))) " by contrary motion (" (pair-label m) ")")}))
+     :msg [:v/contrary-perfect (:a m) (:b m)]}))
 
 (defn- upper-move [above? m] (if above? (:cp m) (:cf m)))
 
 (defmethod check :direct-perfect [_ {:keys [motions]}]
   (for [m motions :when (and (= :similar (:kind m)) (= :perfect (:cons (:b m))))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str "Direct " (perfect-kind (:b m)) ": similar motion into a perfect consonance (" (pair-label m) ")")}))
+     :msg [:v/direct-perfect (:a m) (:b m)]}))
 
 (defmethod check :direct-perfect-leap [_ {:keys [motions above?]}]
   (for [m motions
         :when (and (= :similar (:kind m)) (= :perfect (:cons (:b m)))
                    (> (:g (upper-move above? m)) 1))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str "Direct " (perfect-kind (:b m)) " with a leap in the upper voice (" (pair-label m) ")")}))
+     :msg [:v/direct-perfect-leap (:a m) (:b m)]}))
 
 (defmethod check :parallel-run [_ {:keys [motions]}]
   (let [par? #(and (= :parallel (:kind %)) (= :imperfect (:cons (:a %))))
@@ -330,16 +243,16 @@
                   (filter #(par? (first %))))]
     (for [run runs :when (>= (count run) 3)]
       {:cols (span (:i (first run)) (inc (:i (peek run))))
-       :msg (str (inc (count run)) " parallel " (if (= 2 (:g7 (:a (first run)))) "3rds" "6ths") " in a row")})))
+       :msg [:v/parallel-run (inc (count run)) (:g7 (:a (first run)))]})))
 
 (defmethod check :leap-together [_ {:keys [motions]}]
   (for [m motions
         :when (and (#{:similar :parallel} (:kind m)) (>= (:g (:cf m)) 3) (>= (:g (:cp m)) 3))]
-    {:cols [(:i m) (inc (:i m))] :msg "Both voices leap in the same direction"}))
+    {:cols [(:i m) (inc (:i m))] :msg [:v/leap-together]}))
 
 (defmethod check :static [_ {:keys [motions]}]
   (for [m motions :when (= :static (:kind m))]
-    {:cols [(:i m) (inc (:i m))] :msg "Neither voice moves"}))
+    {:cols [(:i m) (inc (:i m))] :msg [:v/static]}))
 
 ;; ---------------------------------------------------------------- cadence
 
@@ -350,15 +263,13 @@
   (when-let [m (cadence-motion ctx)]
     (when-not (and (= :contrary (:kind m)) (= 1 (:g (:cf m))) (= 1 (:g (:cp m))))
       [{:cols [(:i m) (inc (:i m))]
-        :msg (str "The final is reached by " (name (:kind m)) " motion"
-                  (when-not (and (= 1 (:g (:cf m))) (= 1 (:g (:cp m)))) " with a leap")
-                  "; both voices should step into it from opposite sides")}])))
+        :msg [:v/cadence-step (:kind m) (not (and (= 1 (:g (:cf m))) (= 1 (:g (:cp m)))))]}])))
 
 (defmethod check :leading-tone [_ ctx]
   (when-let [m (cadence-motion ctx)]
     (when-not (or (= 1 (Math/abs (:semis (:cf m)))) (= 1 (Math/abs (:semis (:cp m)))))
       [{:cols [(:i m) (inc (:i m))]
-        :msg "No half step into the final; raise the 7th in the voice that rises to the final"}])))
+        :msg [:v/leading-tone]}])))
 
 ;; ---------------------------------------------------------------- melodic rules
 
@@ -381,22 +292,22 @@
   (for [m moves
         :when (and (<= (:g m) 7) (or (#{:A :d :AA :dd} (:q m)) (= 6 (:g7 m))))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str (if (zero? (:g m)) "Chromatic step" "Dissonant leap") ": " (t/interval-long m))}))
+     :msg [:v/melodic-dissonance m]}))
 
 (defmethod check-line :leap-size [_ {:keys [moves]}]
   (for [m moves :when (> (:g m) 7)]
-    {:cols [(:i m) (inc (:i m))] :msg (str "Leap of " (t/with-article (t/interval-long m)))}))
+    {:cols [(:i m) (inc (:i m))] :msg [:v/leap-size m]}))
 
 (defmethod check-line :sixth [_ {:keys [moves]}]
   (for [m moves :when (and (= 5 (:g m)) (or (= :M (:q m)) (and (= :m (:q m)) (neg? (:dir m)))))]
     {:cols [(:i m) (inc (:i m))]
-     :msg (str (if (pos? (:dir m)) "Rising " "Falling ") (t/interval-long m))}))
+     :msg [:v/sixth m]}))
 
 (defmethod check-line :leap-recovery [_ {:keys [moves]}]
   (for [[a b] (adjacent-pairs moves)
         :when (and (>= (:g a) 4) (not (and (= (:dir b) (- (:dir a))) (<= (:g b) 2))))]
     {:cols [(:i a) (inc (:i a)) (inc (:i b))]
-     :msg (str "Leap of " (t/with-article (t/interval-long a)) " not followed by a turn the other way")}))
+     :msg [:v/leap-recovery a]}))
 
 (defmethod check-line :leap-chain [_ {:keys [line moves]}]
   (let [skip? #(and (>= (:g %) 2) (not (zero? (:dir %))))
@@ -407,15 +318,15 @@
            :let [total (t/interval (line (:i a)) (line (inc (:i b))))]
            :when (or (> (:g total) 7) (= :dissonant (t/consonance total)))]
        {:cols [(:i a) (inc (:i a)) (inc (:i b))]
-        :msg (str "Two leaps the same way outline " (t/with-article (t/interval-long total)))})
+        :msg [:v/leap-chain total]})
      (for [[[a b] [_ c]] (partition 2 1 pairs)
            :when (and (= (:i c) (inc (:i b)))
                       (every? skip? [a b c]) (apply = (map :dir [a b c])))]
-       {:cols (span (:i a) (inc (:i c))) :msg "Three leaps in the same direction"}))))
+       {:cols (span (:i a) (inc (:i c))) :msg [:v/leap-chain-three]}))))
 
 (defmethod check-line :repeat [_ {:keys [moves]}]
   (for [m moves :when (and (zero? (:g m)) (zero? (:semis m)))]
-    {:cols [(:i m) (inc (:i m))] :msg "Repeated note"}))
+    {:cols [(:i m) (inc (:i m))] :msg [:v/repeat]}))
 
 (defn- turning-points [run]
   (let [dirs (map (fn [[_ x] [_ y]] (compare (t/midi y) (t/midi x))) run (rest run))]
@@ -433,7 +344,7 @@
         :when (> (- j i) 1)
         :let [iv (t/interval x y)]
         :when (and (#{:A :d} (:q iv)) (#{3 4} (:g7 iv)))]
-    {:cols (span i j) :msg (str "The line outlines a tritone: " (t/note-name x) " to " (t/note-name y))}))
+    {:cols (span i j) :msg [:v/tritone-outline x y]}))
 
 (defmethod check-line :range [_ {:keys [line]}]
   (let [ns (keep-indexed #(when %2 [%1 %2]) line)]
@@ -442,7 +353,7 @@
             [hi-i hi] (apply max-key #(:s (second %)) ns)
             iv (t/interval lo hi)]
         (when (> (:g iv) 9)
-          [{:cols (vec (sort [li hi-i])) :msg (str "Range of " (t/with-article (t/interval-long iv)))}])))))
+          [{:cols (vec (sort [li hi-i])) :msg [:v/range iv]}])))))
 
 (defmethod check-line :climax [_ {:keys [line]}]
   (let [ns (keep-indexed #(when %2 [%1 (t/midi %2)]) line)]
@@ -450,7 +361,7 @@
       (let [top (apply max (map second ns))
             at (mapv first (filter #(= top (second %)) ns))]
         (when (> (count at) 1)
-          [{:cols at :msg (str "The highest note, " (t/note-name (line (first at))) ", appears " (count at) " times")}])))))
+          [{:cols at :msg [:v/climax (line (first at)) (count at)]}])))))
 
 (defmethod check-line :leaps-many [_ {:keys [moves]}]
   (let [skips (filter #(>= (:g %) 2) moves)
@@ -459,13 +370,13 @@
     (when (and (>= (count moves) 5)
                (or (> (* 3 (count big)) (count moves)) (> (* 3 (count skips)) (* 2 (count moves)))))
       [{:cols (vec (distinct (mapcat #(vector (:i %) (inc (:i %))) leaps)))
-        :msg (str (count leaps) " of " (count moves) " moves are leaps")}])))
+        :msg [:v/leaps-many (count leaps) (count moves)]}])))
 
 (defmethod check-line :mode [_ {:keys [line key lt-index]}]
   (for [[i note] (map-indexed vector line)
         :when (and note (not (t/in-mode? key note))
                    (not (and (= i lt-index) (t/leading-tone? key note))))]
-    {:cols [i] :msg (str (t/note-name note) " is outside " (t/key-name key))}))
+    {:cols [i] :msg [:v/mode note key]}))
 
 (defmethod check-line :cf-final [_ {:keys [line key n]}]
   (let [fpc (t/final-pc key)
@@ -473,16 +384,16 @@
               (and (first line) (not= fpc (t/pc (first line)))) (conj 0)
               (and (> n 1) (get line (dec n)) (not= fpc (t/pc (line (dec n))))) (conj (dec n)))]
     (when (seq bad)
-      [{:cols bad :msg (str "The cantus should begin and end on " (t/final-name (:final key)))}])))
+      [{:cols bad :msg [:v/cf-final (:final key)]}])))
 
 (defmethod check-line :cf-ending [_ {:keys [moves n]}]
   (when-let [m (and (> n 1) (first (filter #(= (- n 2) (:i %)) moves)))]
     (when (not= 1 (:g m))
-      [{:cols [(- n 2) (dec n)] :msg (str "The cantus reaches the final by " (t/with-article (t/interval-long m)))}])))
+      [{:cols [(- n 2) (dec n)] :msg [:v/cf-ending m]}])))
 
 (defmethod check-line :cf-length [_ {:keys [n]}]
   (when (and (> n 1) (not (<= 8 n 16)))
-    [{:cols [] :msg (str "The cantus has " n " notes; 8–16 is typical")}]))
+    [{:cols [] :msg [:v/cf-length n]}]))
 
 ;; ---------------------------------------------------------------- analysis
 

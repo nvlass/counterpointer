@@ -5,7 +5,8 @@
             [counterpointer.library :as lib]
             [counterpointer.audio :as audio]
             [counterpointer.storage :as storage]
-            [counterpointer.midi :as midi]))
+            [counterpointer.midi :as midi]
+            [counterpointer.i18n :as i18n]))
 
 (def default-settings
   {:preset :strict
@@ -16,7 +17,9 @@
    :tempo 60
    :midi false
    :hints true
-   :candidates false})
+   :candidates false
+   :lang (i18n/browser-lang)
+   :note-names (if (= :el (i18n/browser-lang)) :solfege :letters)})
 
 (def centers {:treble 31 :bass 24})
 
@@ -57,6 +60,7 @@
 (rf/reg-fx :later
   (fn [xs] (doseq [{:keys [ms event]} xs] (js/setTimeout #(rf/dispatch event) ms))))
 (rf/reg-fx :midi/connect (fn [on?] (if on? (midi/connect!) (midi/disconnect!))))
+(rf/reg-fx :html-lang (fn [lang] (set! (.. js/document -documentElement -lang) (name lang))))
 
 (def persist
   "Saves the persisted parts of the db whenever they change, once storage has loaded."
@@ -82,7 +86,8 @@
     (let [s (merge default-settings settings)
           s (if (= :custom (:preset s)) s (assoc s :rules (rules/preset-rules (:preset s))))]
       (cond-> {:db (cond-> (assoc db :settings s :saved (vec saved) :loaded? true)
-                     exercise (assoc :exercise exercise))}
+                     exercise (assoc :exercise exercise))
+               :html-lang (:lang s)}
         (:midi s) (assoc :midi/connect true)))))
 
 (rf/reg-event-db :audio/loaded (fn [db [_ n]] (assoc db :samples n)))
@@ -94,7 +99,8 @@
 (rf/reg-event-fx :settings/set
   (fn [{:keys [db]} [_ k v]]
     (cond-> {:db (assoc-in db [:settings k] v)}
-      (= k :midi) (assoc :midi/connect v))))
+      (= k :midi) (assoc :midi/connect v)
+      (= k :lang) (assoc :html-lang v))))
 
 (rf/reg-event-db :settings/preset
   (fn [db [_ p]]
@@ -105,7 +111,7 @@
     (update db :settings
             (fn [s]
               (let [rs ((if (contains? (:rules s) id) disj conj) (:rules s) id)
-                    p (some (fn [[p _]] (when (= rs (rules/preset-rules p)) p)) rules/presets)]
+                    p (some (fn [p] (when (= rs (rules/preset-rules p)) p)) rules/presets)]
                 (assoc s :rules rs :preset (or p :custom)))))))
 
 ;; ---------------------------------------------------------------- editing

@@ -2,10 +2,13 @@
   (:require [re-frame.core :as rf]
             [counterpointer.rules :as rules]
             [counterpointer.events :as events]
-            [counterpointer.hints :as hints]))
+            [counterpointer.hints :as hints]
+            [counterpointer.i18n :as i18n]))
 
 (doseq [k [:view :settings :exercise :sel :focus :saved :samples :play :midi :text-error :history :future]]
   (rf/reg-sub k (fn [db _] (k db))))
+
+(rf/reg-sub :loc :<- [:settings] (fn [s _] (i18n/locale (:lang s) (:note-names s))))
 
 (rf/reg-sub :context :<- [:exercise] (fn [e _] (rules/context e)))
 

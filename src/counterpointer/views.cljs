@@ -8,7 +8,8 @@
             [counterpointer.score :as score]
             [counterpointer.cheatsheet :as cheat]
             [counterpointer.guide :as guide]
-            [counterpointer.hints :as hints]))
+            [counterpointer.hints :as hints]
+            [counterpointer.i18n :as i18n :refer [tr tr-msg]]))
 
 (defn <sub [q] @(rf/subscribe q))
 (defn >evt [e] (rf/dispatch e))
@@ -33,16 +34,16 @@
 (defn- bar-span [cols]
   (let [cs (map inc (sort cols))]
     (cond (empty? cs) nil
-          (= 1 (count cs)) (str "bar " (first cs))
-          (= (count cs) (inc (- (last cs) (first cs)))) (str "bars " (first cs) "–" (last cs))
-          :else (str "bars " (str/join ", " cs)))))
+          (= 1 (count cs)) (tr :bars/one (first cs))
+          (= (count cs) (inc (- (last cs) (first cs)))) (tr :bars/range (first cs) (last cs))
+          :else (tr :bars/list cs))))
 
 (defn bars
   "Labels violation columns: bars for the cantus, slots (shown as bars and beats) otherwise."
   [cols voice per]
   (if (and (> per 1) (not= voice :cf))
     (if (= 1 (count cols))
-      (let [c (first cols)] (str "bar " (inc (quot c per)) (if (zero? (mod c per)) ", downbeat" ", upbeat")))
+      (let [c (first cols)] (tr :bars/beat (inc (quot c per)) (zero? (mod c per))))
       (bar-span (distinct (map #(quot % per) cols))))
     (bar-span cols)))
 
@@ -54,26 +55,23 @@
              :on-change #(let [m (keyword (.. % -target -value))
                                f (if (some #{final} (t/finals m)) final (first (t/finals m)))]
                            (>evt [:set-key {:mode m :final f}]))}
-    (for [m t/modes] ^{:key (:id m)} [:option {:value (name (:id m))} (:name m)])]
+    (for [m t/modes] ^{:key (:id m)} [:option {:value (name (:id m))} (tr :fmt/mode (:id m))])]
    [:select {:value (str (:l final) "/" (:a final))
              :on-change #(let [[l a] (map js/parseInt (str/split (.. % -target -value) "/"))]
                            (>evt [:set-key {:mode mode :final {:l l :a a}}]))}
     (for [f (sort-by (juxt :l :a) (t/finals mode))]
-      ^{:key (str (:l f) (:a f))} [:option {:value (str (:l f) "/" (:a f))} (str "on " (t/final-name f))])]
-   [:span.hint (let [s (t/signature key)]
-                 (cond (zero? s) "no sharps or flats"
-                       (pos? s) (str s " ♯")
-                       :else (str (- s) " ♭")))]])
+      ^{:key (str (:l f) (:a f))} [:option {:value (str (:l f) "/" (:a f))} (tr :fmt/on-final f)])]
+   [:span.hint (tr :fmt/signature (t/signature key))]])
 
 (defn setup-card []
   (let [{:keys [key position species]} (<sub [:exercise])]
     [:div.card.setup
-     [:div.field [:span "Mode"] [key-picker key]]
+     [:div.field [:span (tr :ui/mode)] [key-picker key]]
      [:div.row2
-      [:div.field [:span "Counterpoint"]
-       [seg [[:above "above the cantus"] [:below "below"]] position #(>evt [:set-position %])]]
-      [:div.field [:span "Species"]
-       [seg [[1 "1st · 1:1"] [2 "2nd · 2:1"] [3 "3rd · 4:1" true] [4 "4th" true] [5 "florid" true]]
+      [:div.field [:span (tr :ui/counterpoint)]
+       [seg [[:above (tr :ui/above)] [:below (tr :ui/below)]] position #(>evt [:set-position %])]]
+      [:div.field [:span (tr :ui/species)]
+       [seg [[1 (tr :ui/species-1)] [2 (tr :ui/species-2)] [3 (tr :ui/species-3) true] [4 (tr :ui/species-4) true] [5 (tr :ui/species-5) true]]
         (or species 1) #(>evt [:set-species %])]]]]))
 
 ;; ---------------------------------------------------------------- score
@@ -93,7 +91,7 @@
               :placeholder "D F E D G F A G F E D"
               :on-blur apply!
               :on-key-down #(when (= "Enter" (.-key %)) (apply! %) (.blur (.-target %)))}]
-     (when err [:small.err-text err])]))
+     (when err [:small.err-text (tr-msg err)])]))
 
 (defn edit-toolbar []
   (let [sel (<sub [:sel])
@@ -102,31 +100,31 @@
     [:div.toolbar
      [:span.sel-info
       (if sel
-        [:<> [:b (if (= :cp (:voice sel)) "Counterpoint" "Cantus")] " · "
+        [:<> [:b (tr (if (= :cp (:voice sel)) :ui/counterpoint :ui/cantus))] " · "
          (bars [(:col sel)] (:voice sel) (<sub [:per]))
-         (when note [:<> " · " (t/note-name note)])]
-        "Click the staff to place a note")]
+         (when note [:<> " · " (tr :fmt/note note)])]
+        (tr :ui/click-staff))]
      [:div.tools
-      [:button {:title "Up a step (↑, ⇧↑ octave)" :on-click #(>evt [:edit :up 1])} "↑"]
-      [:button {:title "Down a step (↓, ⇧↓ octave)" :on-click #(>evt [:edit :up -1])} "↓"]
-      [:button {:title "Sharpen (#)" :disabled (not note) :on-click #(>evt [:edit :raise])} "♯"]
-      [:button {:title "Flatten (-)" :disabled (not note) :on-click #(>evt [:edit :lower])} "♭"]
-      [:button {:title "Natural (n)" :disabled (not note) :on-click #(>evt [:edit :natural])} "♮"]
-      [:button {:title "Delete (⌫)" :on-click #(>evt [:edit :backspace])} "⌫"]
-      [:button {:title "Switch voice (Tab)" :on-click #(>evt [:switch-voice])} "⇅"]
-      [:button {:title "Undo (⌘Z)" :disabled (empty? (<sub [:history])) :on-click #(>evt [:undo])} "↶"]
-      [:button {:title "Redo (⇧⌘Z)" :disabled (empty? (<sub [:future])) :on-click #(>evt [:redo])} "↷"]]]))
+      [:button {:title (tr :ui/tool-up) :on-click #(>evt [:edit :up 1])} "↑"]
+      [:button {:title (tr :ui/tool-down) :on-click #(>evt [:edit :up -1])} "↓"]
+      [:button {:title (tr :ui/tool-sharp) :disabled (not note) :on-click #(>evt [:edit :raise])} "♯"]
+      [:button {:title (tr :ui/tool-flat) :disabled (not note) :on-click #(>evt [:edit :lower])} "♭"]
+      [:button {:title (tr :ui/tool-natural) :disabled (not note) :on-click #(>evt [:edit :natural])} "♮"]
+      [:button {:title (tr :ui/tool-delete) :on-click #(>evt [:edit :backspace])} "⌫"]
+      [:button {:title (tr :ui/tool-voice) :on-click #(>evt [:switch-voice])} "⇅"]
+      [:button {:title (tr :ui/tool-undo) :disabled (empty? (<sub [:history])) :on-click #(>evt [:undo])} "↶"]
+      [:button {:title (tr :ui/tool-redo) :disabled (empty? (<sub [:future])) :on-click #(>evt [:redo])} "↷"]]]))
 
 (defn play-bar []
   (let [{:keys [playing]} (<sub [:play])
         tempo (:tempo (<sub [:settings]))]
     [:div.play-bar
      (if playing
-       [:button.primary {:on-click #(>evt [:stop])} "■ Stop"]
-       [:button.primary {:on-click #(>evt [:play :both])} "▶ Play"])
-     [:button {:on-click #(>evt [:play :cf])} "Cantus"]
-     [:button {:on-click #(>evt [:play :cp])} "Counterpoint"]
-     [:div.tempo [slider "Tempo" tempo 30 120 2 " bpm" #(>evt [:settings/set :tempo %])]]]))
+       [:button.primary {:on-click #(>evt [:stop])} (tr :ui/stop)]
+       [:button.primary {:on-click #(>evt [:play :both])} (tr :ui/play)])
+     [:button {:on-click #(>evt [:play :cf])} (tr :ui/cantus)]
+     [:button {:on-click #(>evt [:play :cp])} (tr :ui/counterpoint)]
+     [:div.tempo [slider (tr :ui/tempo) tempo 30 120 2 " bpm" #(>evt [:settings/set :tempo %])]]]))
 
 (defn score-card []
   (let [{:keys [cf cp key position]} (<sub [:exercise])
@@ -152,39 +150,32 @@
                     :labels (:labels settings)
                     :on-pick (fn [voice col step] (>evt [:pick voice col step]))}]]
      (when (:labels settings)
-       [:div.legend "Between the staves: interval numbers, and the motion into each bar: "
-        [:b "c"] "ontrary, " [:b "o"] "blique, " [:b "s"] "imilar, " [:b "p"] "arallel."])
+       [:div.legend (tr :ui/legend)])
      [play-bar]
      [:details.typing
-      [:summary "Type or paste notes"]
-      [text-entry (if (= position :below) :cf :cp) (if (= position :below) "Cantus (upper)" "Counterpoint (upper)")]
-      [text-entry (if (= position :below) :cp :cf) (if (= position :below) "Counterpoint (lower)" "Cantus (lower)")]
+      [:summary (tr :ui/type-notes)]
+      [text-entry (if (= position :below) :cf :cp) (tr (if (= position :below) :ui/cantus-upper :ui/cp-upper))]
+      [text-entry (if (= position :below) :cp :cf) (tr (if (= position :below) :ui/cp-lower :ui/cantus-lower))]
       (when (> per 1)
-        [:p.hint "Second species: two half notes per bar; start with " [:code "-"] " for a half rest, and end on a single note (the whole note). " [:code "|"] " between bars is optional."])
-      [:p.hint "Letters with optional ♯/♭ (# or b) and octave: " [:code "D F E D"] " or " [:code "D4 C#5 Bb3"]
-       ". Without an octave a note goes to the nearest one. " [:code "-"] " leaves a bar empty; "
-       [:code "n"] " forces a natural (" [:code "Bn4"] ")."]
-      [:p.hint "Keys: " [:kbd "A"] "–" [:kbd "G"] " enter a note and move on, " [:kbd "↑"] [:kbd "↓"]
-       " move it (⇧ by octave), " [:kbd "#"] " " [:kbd "-"] " " [:kbd "n"] " accidentals, "
-       [:kbd "←"] [:kbd "→"] " move, " [:kbd "Tab"] " other voice, " [:kbd "⌫"] " delete, "
-       [:kbd "Space"] " play, " [:kbd "⌘Z"] " undo."]]]))
+        [:p.hint (tr :ui/typing-second)])
+      [:p.hint (tr :ui/typing-notes)]
+      [:p.hint (tr :ui/typing-keys)]]]))
 
 ;; ---------------------------------------------------------------- results
 
 (defn violation-row [i {:keys [rule level voice cols msg]} focus per]
-  (let [r (rules/rule-by-id rule)]
-    [:li {:class (str (name level) (when (= i focus) " focus"))
-          :on-click #(>evt [:focus i])}
-     [:span.dot]
-     [:div.v-body
-      [:div.v-msg
-       (when voice [:span.voice (if (= voice :cp) "CP" "CF")])
-       msg]
-      [:div.v-meta (bars cols voice per) (when (seq cols) " · ") (:title r)]
-      (when (and (= i focus) (hints/fixes rule))
-        [:div.v-fix "Try: " (hints/fixes rule)])]
-     [:button.link {:title "Turn this rule off"
-                    :on-click (fn [e] (.stopPropagation e) (>evt [:settings/toggle-rule rule]))} "mute"]]))
+  [:li {:class (str (name level) (when (= i focus) " focus"))
+        :on-click #(>evt [:focus i])}
+   [:span.dot]
+   [:div.v-body
+    [:div.v-msg
+     (when voice [:span.voice (tr (if (= voice :cp) :ui/cp-tag :ui/cf-tag))])
+     (tr-msg msg)]
+    [:div.v-meta (bars cols voice per) (when (seq cols) " · ") (tr (keyword "rule" (name rule)))]
+    (when (= i focus)
+      [:div.v-fix (tr :ui/try) (tr (keyword "fix" (name rule)))])]
+   [:button.link {:title (tr :ui/mute-title)
+                  :on-click (fn [e] (.stopPropagation e) (>evt [:settings/toggle-rule rule]))} (tr :ui/mute)]])
 
 (defn results-card []
   (let [vs (<sub [:violations])
@@ -199,26 +190,25 @@
     [:div.card.results
      [:div.summary
       [:div
-       [:h3 "Rule check"]
-       [:div.hint (cond (zero? n) "Start with a cantus firmus (bottom of the page has Fux's)."
-                        (< filled expected) (str "Counterpoint: " filled " of " expected " notes")
-                        :else (str "Complete · " n " bars"))]]
+       [:h3 (tr :ui/rule-check)]
+       [:div.hint (cond (zero? n) (tr :ui/start-with-cf)
+                        (< filled expected) (tr :ui/progress filled expected)
+                        :else (tr :ui/complete n))]]
       [:div.penalty {:class (cond (pos? errors) "bad" (pos? warnings) "warn" :else "good")}
-       [:b penalty] [:small "penalty"]]]
+       [:b penalty] [:small (tr :ui/penalty)]]]
      (if (empty? vs)
-       [:p.clean "No rule violations."]
+       [:p.clean (tr :ui/no-violations)]
        [:ul.violations
         (for [[i v] (map-indexed vector vs)]
           ^{:key i} [violation-row i v focus (<sub [:per])])])
-     [:p.hint "Errors cost " (rules/penalty :error) ", warnings " (rules/penalty :warning)
-      ". Nothing is blocked; tap a row to highlight it on the staff."]]))
+     [:p.hint (tr :ui/results-hint (rules/penalty :error) (rules/penalty :warning))]]))
 
 (defn candidate-chip [e voice col {:keys [note errors warnings msgs]}]
   (let [iv (hints/interval-to-partner e voice col note)]
     [:button.chip.cand {:class (cond (pos? errors) "bad" (pos? warnings) "warn")
-                        :title (if (seq msgs) (str/join "\n" msgs) "No rule broken here")
+                        :title (if (seq msgs) (str/join "\n" (map tr-msg msgs)) (tr :ui/no-rule-broken))
                         :on-click #(>evt [:place voice col note])}
-     [:b (t/note-name note)] (when iv [:small iv])]))
+     [:b (tr :fmt/note note)] (when iv [:small iv])]))
 
 (defn hints-card []
   (let [{:keys [hints candidates]} (<sub [:settings])]
@@ -230,23 +220,23 @@
             clean (filter #(and (zero? (:errors %)) (zero? (:warnings %))) cands)
             warned (filter #(and (zero? (:errors %)) (pos? (:warnings %))) cands)]
         [:div.card.hints-now
-         [:h3 "Hints" (when sel [:small (if (= :cp (:voice sel)) "counterpoint · " "cantus · ")
-                                  (bars [(:col sel)] (:voice sel) (<sub [:per]))])]
-         [:ul.tips (for [[i tip] (map-indexed vector tips)] ^{:key i} [:li tip])]
+         [:h3 (tr :ui/hints) (when sel [:small (tr (if (= :cp (:voice sel)) :ui/hints-cp :ui/hints-cf))
+                                         (bars [(:col sel)] (:voice sel) (<sub [:per]))])]
+         [:ul.tips (for [[i tip] (map-indexed vector tips)] ^{:key i} [:li (tr-msg tip)])]
          (when (and sel (seq (:cf e)))
            (if candidates
              [:div.cands
-              [:div.group-label "Notes that break no rules here"
-               [:button.link {:on-click #(>evt [:settings/set :candidates false])} "hide"]]
+              [:div.group-label (tr :ui/clean-notes)
+               [:button.link {:on-click #(>evt [:settings/set :candidates false])} (tr :ui/hide)]]
               (if (seq clean)
                 [:div.chips (for [c (take 10 clean)] ^{:key (t/note-name (:note c))} [candidate-chip e (:voice sel) (:col sel) c])]
-                [:p.hint "None: every note here breaks something, often because of a neighbouring note. Try changing the notes around it."])
+                [:p.hint (tr :ui/no-clean)])
               (when (seq warned)
                 [:<>
-                 [:div.group-label "Only style warnings (hover for why)"]
+                 [:div.group-label (tr :ui/warned-notes)]
                  [:div.chips (for [c (take 8 warned)] ^{:key (t/note-name (:note c))} [candidate-chip e (:voice sel) (:col sel) c])]])
-              [:p.hint "Numbers are the interval with the other voice. Judged against the notes already written on both sides."]]
-             [:button.ghost {:on-click #(>evt [:settings/set :candidates true])} "Show notes that work here"]))]))))
+              [:p.hint (tr :ui/cands-hint)]]
+             [:button.ghost {:on-click #(>evt [:settings/set :candidates true])} (tr :ui/show-cands)]))]))))
 
 (defn pct [k m total] (if (pos? total) (Math/round (* 100 (/ (get m k 0) total))) 0))
 
@@ -261,26 +251,21 @@
   (let [{:keys [motion motions cons verts melody moves]} (<sub [:stats])]
     (when (pos? verts)
       [:div.card.stats
-       [:h3 "Shape " [:small "descriptive, not scored"]]
+       [:h3 (tr :ui/shape) " " [:small (tr :ui/shape-sub)]]
        [:div.stat-cols
         [:div
-         [:div.group-label "Motion"]
-         [meter-row "contrary" (pct :contrary motion motions)]
-         [meter-row "oblique" (pct :oblique motion motions)]
-         [meter-row "similar" (pct :similar motion motions)]
-         [meter-row "parallel" (pct :parallel motion motions)]]
+         [:div.group-label (tr :ui/motion)]
+         (for [k [:contrary :oblique :similar :parallel]]
+           ^{:key k} [meter-row (tr :fmt/motion k) (pct k motion motions)])]
         [:div
-         [:div.group-label "Intervals"]
-         [meter-row "imperfect" (pct :imperfect cons verts)]
-         [meter-row "perfect" (pct :perfect cons verts)]
-         [meter-row "dissonant" (pct :dissonant cons verts)]]
+         [:div.group-label (tr :ui/intervals)]
+         (for [k [:imperfect :perfect :dissonant]]
+           ^{:key k} [meter-row (tr (keyword "ui" (name k))) (pct k cons verts)])]
         [:div
-         [:div.group-label "Counterpoint melody"]
-         [meter-row "steps" (pct :step melody moves)]
-         [meter-row "3rds" (pct :skip melody moves)]
-         [meter-row "leaps" (pct :leap melody moves)]
-         [meter-row "repeats" (pct :repeat melody moves)]]]
-       [:p.hint "Rough targets: contrary motion is the most common, imperfect consonances outnumber perfect ones, and the line moves mostly by step."]])))
+         [:div.group-label (tr :ui/cp-melody)]
+         (for [[k label] [[:step :ui/steps] [:skip :ui/thirds] [:leap :ui/leaps] [:repeat :ui/repeats]]]
+           ^{:key k} [meter-row (tr label) (pct k melody moves)])]]
+       [:p.hint (tr :ui/shape-hint)]])))
 
 ;; ---------------------------------------------------------------- library
 
@@ -289,28 +274,28 @@
     (fn []
       (let [saved (<sub [:saved])]
         [:div.card.library
-         [:h3 "Cantus firmi"]
+         [:h3 (tr :ui/cantus-firmi)]
          [:div.chips
           (for [entry lib/fux]
             ^{:key (:name entry)}
-            [:button.chip {:on-click #(>evt [:load entry])} (subs (:name entry) 6)])
+            [:button.chip {:on-click #(>evt [:load entry])} (tr :fmt/key (:key entry))])
           (for [entry lib/examples]
             ^{:key (:name entry)}
-            [:button.chip {:on-click #(>evt [:load entry])} (str "Example: " (:name entry))])]
-         [:p.hint "Loading a cantus replaces the exercise (undo brings it back) and clears the counterpoint, keeping the species and position."]
-         [:h3 "Saved"]
+            [:button.chip {:on-click #(>evt [:load entry])} (tr :ui/example (:species entry) (:key entry))])]
+         [:p.hint (tr :ui/library-hint)]
+         [:h3 (tr :ui/saved)]
          (when (seq saved)
            [:ul.saved
             (for [{n :name :as entry} (sort-by :name saved)]
               ^{:key n}
               [:li [:button.link {:on-click #(>evt [:load entry])} n]
-               [:span.hint (t/key-name (get-in entry [:exercise :key]))]
-               [:button.link.del {:on-click #(>evt [:delete-saved n])} "delete"]])])
+               [:span.hint (tr :fmt/key (get-in entry [:exercise :key]))]
+               [:button.link.del {:on-click #(>evt [:delete-saved n])} (tr :ui/delete)]])])
          [:div.file-row
-          [:input.name {:value @name :placeholder "Name this exercise"
+          [:input.name {:value @name :placeholder (tr :ui/name-exercise)
                         :on-change #(reset! name (.. % -target -value))}]
           [:button {:disabled (str/blank? @name)
-                    :on-click #(do (>evt [:save-as (str/trim @name)]) (reset! name ""))} "Save"]]]))))
+                    :on-click #(do (>evt [:save-as (str/trim @name)]) (reset! name ""))} (tr :ui/save)]]]))))
 
 (defn write-view []
   [:<>
@@ -324,58 +309,64 @@
 ;; ---------------------------------------------------------------- rules & settings
 
 (defn rules-view []
-  (let [{:keys [preset check-cf labels hear midi] :as settings} (<sub [:settings])
+  (let [{:keys [preset check-cf labels hear midi note-names] :as settings} (<sub [:settings])
         enabled (:rules settings)
-        midi-state (<sub [:midi])]
+        midi-state (<sub [:midi])
+        names (i18n/solfege (:lang settings))]
     [:<>
      [:div.card
-      [:h3 "Rule set"]
-      [seg (conj (vec rules/presets) [:custom "Custom" (not= preset :custom)]) preset #(>evt [:settings/preset %])]
-      [:p.hint "Strict follows Fux closely. Relaxed keeps the core rules and drops some style points. Turning single rules on or off makes it Custom."]
-      [toggle "Check the cantus firmus too" check-cf #(>evt [:settings/set :check-cf %])
-       "Melodic rules apply to the cantus as well, useful when you write your own."]]
-     (for [[g label] rules/groups]
+      [:h3 (tr :ui/rule-set)]
+      [seg (conj (mapv (fn [p] [p (tr (keyword "preset" (name p)))]) rules/presets)
+                 [:custom (tr :preset/custom) (not= preset :custom)])
+       preset #(>evt [:settings/preset %])]
+      [:p.hint (tr :ui/rule-set-hint)]
+      [toggle (tr :ui/check-cf) check-cf #(>evt [:settings/set :check-cf %])
+       (tr :ui/check-cf-hint)]]
+     (for [g rules/groups]
        ^{:key g}
        [:div.card
-        [:h3 label]
-        (for [{:keys [id title desc level presets species]} (filter #(= g (:group %)) rules/rules)]
+        [:h3 (tr (keyword "group" (name g)))]
+        (for [{:keys [id] :as r} (filter #(= g (:group %)) rules/rules)]
           ^{:key id}
           [:label.toggle.rule
            [:input {:type "checkbox" :checked (contains? enabled id)
                     :on-change #(>evt [:settings/toggle-rule id])}]
-           [:span [:span.tag {:class (name level)} (name level)] " " title
-            (when-not (contains? presets :relaxed) [:span.tag.preset "strict only"])
-            (when-not (contains? presets :strict) [:span.tag.preset "relaxed only"])
-            (when species [:span.tag.preset "2nd species"])
-            [:small desc]]])])
+           [:span [cheat/rule-tags r] " " (tr (keyword "rule" (name id)))
+            [:small (tr (keyword "rule.desc" (name id)))]]])])
      [:div.card
-      [:h3 "Settings"]
-      [:div.field [:span "When placing a note, play"]
-       [seg [[:vertical "both notes"] [:note "the note"] [:off "nothing"]] hear #(>evt [:settings/set :hear %])]]
-      [toggle "Interval numbers and motion between the staves" labels #(>evt [:settings/set :labels %])]
-      [toggle "Hints panel on the Write tab" (:hints settings) #(>evt [:settings/set :hints %])
-       "Advice for the selected bar, and on request the notes that break no rules there."]
-      [toggle "MIDI keyboard input" midi #(>evt [:settings/set :midi %])
+      [:h3 (tr :ui/settings)]
+      [:div.field [:span (tr :ui/hear)]
+       [seg [[:vertical (tr :ui/hear-both)] [:note (tr :ui/hear-note)] [:off (tr :ui/hear-off)]] hear #(>evt [:settings/set :hear %])]]
+      [:div.field [:span (tr :ui/note-names)]
+       [seg [[:letters "C D E"] [:solfege (str/join " " (take 3 names))]] note-names #(>evt [:settings/set :note-names %])]]
+      [toggle (tr :ui/labels-toggle) labels #(>evt [:settings/set :labels %])]
+      [toggle (tr :ui/hints-toggle) (:hints settings) #(>evt [:settings/set :hints %])
+       (tr :ui/hints-toggle-hint)]
+      [toggle (tr :ui/midi-toggle) midi #(>evt [:settings/set :midi %])
        (case (:state midi-state)
          :ready (if (seq (:inputs midi-state))
-                  (str "Connected: " (str/join ", " (:inputs midi-state)) ". Notes go to the selected bar.")
-                  "No MIDI devices found.")
-         :unsupported "This browser has no Web MIDI."
-         :denied "MIDI access was denied."
-         "Played notes enter the selected bar and move on.")]]]))
+                  (tr :ui/midi-connected (:inputs midi-state))
+                  (tr :ui/midi-none))
+         :unsupported (tr :ui/midi-unsupported)
+         :denied (tr :ui/midi-denied)
+         (tr :ui/midi-off))]]]))
 
 ;; ---------------------------------------------------------------- app
 
 (defn app []
-  (let [view (<sub [:view])]
+  (let [view (<sub [:view])
+        lang (:lang (<sub [:settings]))]
     [:div.app
      [:header
       [:h1 "Counterpointer"]
-      (when-not (<sub [:samples]) [:span.badge "loading sounds…"])]
+      [:div.header-end
+       (when-not (<sub [:samples]) [:span.badge (tr :ui/loading-sounds)])
+       [:div.lang {:title (tr :ui/language)}
+        [seg [[:en "EN"] [:el "ΕΛ"]] lang #(>evt [:settings/set :lang %])]]]]
      [:nav
-      (for [[v label] [[:write "Write"] [:hints "Hints"] [:cheat "Cheat sheet"] [:rules "Rules"]]]
+      (for [v [:write :hints :cheat :rules]]
         ^{:key v}
-        [:button {:class (when (= v view) "on") :on-click #(>evt [:set-view v])} label])]
+        [:button {:class (when (= v view) "on") :on-click #(>evt [:set-view v])} (tr (keyword "nav" (name v)))])]
      (case view
        :cheat [cheat/view]
        :hints [guide/view]

@@ -1,6 +1,7 @@
 (ns counterpointer.score
   (:require [reagent.core :as r]
-            [counterpointer.theory :as t]))
+            [counterpointer.theory :as t]
+            [counterpointer.i18n :refer [tr]]))
 
 ;; Two staves: treble for the upper voice, bass for the lower one. One column per counterpoint
 ;; slot (`per` slots in a bar); the cantus note of a bar sits on its first slot.
@@ -102,8 +103,6 @@
        ^{:key k}
        [:text.acc {:x (+ 40 (* 9 k)) :y (+ (y-of lay staff st) 5)} (if (neg? sig) "♭" "♯")])]))
 
-(def motion-abbr {:contrary "c" :oblique "o" :similar "s" :parallel "p" :static "–"})
-
 (defn- pick-at [lay {:keys [n-cols]} x y]
   (let [col (Math/floor (/ (- x (:x0 lay)) (:col-w lay)))]
     (when (< -1 col n-cols)
@@ -188,11 +187,11 @@
                       :class (let [mark (get-in marks [:verts i])
                                    ok-weak? (and (pos? (:beat v)) (= :dissonant (:cons v)) (not mark))]
                                (str "iv " (if ok-weak? "passing" (name (:cons v))) " " (some-> mark name)))}
-               [:title (str (t/interval-name v) ": " (t/interval-long v))]
+               [:title (tr :fmt/iv v)]
                (:num v)])
             (for [m motions :let [i (:i m)]]
               ^{:key (str "m" i)}
               [:text {:x (+ x0 (* col-w (inc i))) :y (+ mid 4) :text-anchor "middle"
                       :class (str "mv " (name (:kind m)) " " (some-> (get-in marks [:moves i]) name))}
-               [:title (name (:kind m))]
-               (motion-abbr (:kind m))])])]))))
+               [:title (tr :fmt/motion (:kind m))]
+               (tr :fmt/motion-abbr (:kind m))])])]))))

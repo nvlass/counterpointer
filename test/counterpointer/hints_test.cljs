@@ -4,7 +4,8 @@
             [counterpointer.theory :as t]
             [counterpointer.rules :as r]
             [counterpointer.hints :as h]
-            [counterpointer.library :as lib]))
+            [counterpointer.library :as lib]
+            [counterpointer.i18n :as i18n]))
 
 (def dorian {:mode :dorian :final {:l 1 :a 0}})
 
@@ -34,14 +35,16 @@
     (let [e (ex "D4 C4 G3 A3 B3 D4 C4 E4 D4")]
       (is (= #{"C♯4"} (clean-names e {:voice :cp :col 9}))))))
 
-(deftest tips
+(defn tips [e sel] (map #(i18n/msg (i18n/locale :en :letters) %) (h/tips e sel)))
+
+(deftest tips-name-things
   (testing "cadence names the notes"
-    (is (some #(str/includes? % "C♯ → D") (h/tips (ex "D4 C4 G3 A3 B3 D4 C4 E4 D4") {:voice :cp :col 9}))))
+    (is (some #(str/includes? % "C♯ → D") (tips (ex "D4 C4 G3 A3 B3 D4 C4 E4 D4") {:voice :cp :col 9}))))
   (testing "the cantus direction"
-    (is (some #(str/includes? % "rises") (h/tips (ex "D4") {:voice :cp :col 1}))))
+    (is (some #(str/includes? % "rises") (tips (ex "D4") {:voice :cp :col 1}))))
   (testing "leap recovery"
-    (is (some #(str/includes? % "turn back down") (h/tips (ex "D4 C4 A4") {:voice :cp :col 3}))))
+    (is (some #(str/includes? % "turn back down") (tips (ex "D4 C4 A4") {:voice :cp :col 3}))))
   (testing "phrygian keeps the 7th"
     (let [phr {:mode :phrygian :final {:l 2 :a 0}}
           e {:cf (lib/line phr "E3 C3 D3 C3 A2 A3 G3 E3 F3 E3") :cp [] :key phr :position :above :species 1}]
-      (is (some #(str/includes? % "D → E") (h/tips e {:voice :cp :col 8}))))))
+      (is (some #(str/includes? % "D → E") (tips e {:voice :cp :col 8}))))))
