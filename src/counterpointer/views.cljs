@@ -28,12 +28,21 @@
    [:input {:type "range" :min lo :max hi :step step :value value
             :on-change #(on-change (js/parseFloat (.. % -target -value)))}]])
 
-(defn bars [cols]
+(defn- bar-span [cols]
   (let [cs (map inc (sort cols))]
     (cond (empty? cs) nil
           (= 1 (count cs)) (str "bar " (first cs))
           (= (count cs) (inc (- (last cs) (first cs)))) (str "bars " (first cs) "–" (last cs))
           :else (str "bars " (str/join ", " cs)))))
+
+(defn bars
+  "Labels violation columns: bars for the cantus, slots (shown as bars and beats) otherwise."
+  [cols voice per]
+  (if (and (> per 1) (not= voice :cf))
+    (if (= 1 (count cols))
+      (let [c (first cols)] (str "bar " (inc (quot c per)) (if (zero? (mod c per)) ", downbeat" ", upbeat")))
+      (bar-span (distinct (map #(quot % per) cols))))
+    (bar-span cols)))
 
 ;; ---------------------------------------------------------------- setup
 
@@ -55,21 +64,24 @@
                        :else (str (- s) " ♭")))]])
 
 (defn setup-card []
-  (let [{:keys [key position]} (<sub [:exercise])]
+  (let [{:keys [key position species]} (<sub [:exercise])]
     [:div.card.setup
      [:div.field [:span "Mode"] [key-picker key]]
      [:div.row2
       [:div.field [:span "Counterpoint"]
        [seg [[:above "above the cantus"] [:below "below"]] position #(>evt [:set-position %])]]
       [:div.field [:span "Species"]
-       [seg [[1 "1st · 1:1"] [2 "2nd · 2:1" true] [3 "3rd · 4:1" true] [4 "4th" true] [5 "florid" true]]
-        1 identity]]]]))
+       [seg [[1 "1st · 1:1"] [2 "2nd · 2:1"] [3 "3rd · 4:1" true] [4 "4th" true] [5 "florid" true]]
+        (or species 1) #(>evt [:set-species %])]]]]))
 
 ;; ---------------------------------------------------------------- score
 
 (defn text-entry [voice label]
   (let [{:keys [key] :as e} (<sub [:exercise])
-        text (t/line->text key (voice e))
+        per (<sub [:per])
+        text (if (and (= voice :cp) (> per 1))
+               (str/join " | " (map #(t/line->text key %) (partition-all per (:cp e))))
+               (t/line->text key (voice e)))
         err (get (<sub [:text-error]) voice)
         apply! #(>evt [:apply-text voice (.. % -target -value)])]
     [:label.text-entry
@@ -88,7 +100,8 @@
     [:div.toolbar
      [:span.sel-info
       (if sel
-        [:<> [:b (if (= :cp (:voice sel)) "Counterpoint" "Cantus")] " · bar " (inc (:col sel))
+        [:<> [:b (if (= :cp (:voice sel)) "Counterpoint" "Cantus")] " · "
+         (bars [(:col sel)] (:voice sel) (<sub [:per]))
          (when note [:<> " · " (t/note-name note)])]
         "Click the staff to place a note")]
      [:div.tools
@@ -118,7 +131,9 @@
         {:keys [verts motions]} (<sub [:context])
         vs (<sub [:violations])
         focus (<sub [:focus])
-        settings (<sub [:settings])]
+        per (<sub [:per])
+        settings (<sub [:settings])
+        focused (when focus (get vs focus))]
     [:div.card.score-card
      [edit-toolbar]
      [:div.score-wrap
@@ -127,7 +142,10 @@
                     :verts verts :motions motions
                     :marks (<sub [:marks])
                     :sel (<sub [:sel])
-                    :highlight (when focus (:cols (get vs focus)))
+                    :per per
+                    :highlight (if (= :cf (:voice focused))
+                                 (mapcat #(range (* per %) (* per (inc %))) (:cols focused))
+                                 (:cols focused))
                     :playing (:col (<sub [:play]))
                     :labels (:labels settings)
                     :on-pick (fn [voice col step] (>evt [:pick voice col step]))}]]
@@ -139,6 +157,8 @@
       [:summary "Type or paste notes"]
       [text-entry (if (= position :below) :cf :cp) (if (= position :below) "Cantus (upper)" "Counterpoint (upper)")]
       [text-entry (if (= position :below) :cp :cf) (if (= position :below) "Counterpoint (lower)" "Cantus (lower)")]
+      (when (> per 1)
+        [:p.hint "Second species: two half notes per bar; start with " [:code "-"] " for a half rest, and end on a single note (the whole note). " [:code "|"] " between bars is optional."])
       [:p.hint "Letters with optional ♯/♭ (# or b) and octave: " [:code "D F E D"] " or " [:code "D4 C#5 Bb3"]
        ". Without an octave a note goes to the nearest one. " [:code "-"] " leaves a bar empty; "
        [:code "n"] " forces a natural (" [:code "Bn4"] ")."]
@@ -149,7 +169,7 @@
 
 ;; ---------------------------------------------------------------- results
 
-(defn violation-row [i {:keys [rule level voice cols msg]} focus]
+(defn violation-row [i {:keys [rule level voice cols msg]} focus per]
   (let [r (rules/rule-by-id rule)]
     [:li {:class (str (name level) (when (= i focus) " focus"))
           :on-click #(>evt [:focus i])}
@@ -158,7 +178,7 @@
       [:div.v-msg
        (when voice [:span.voice (if (= voice :cp) "CP" "CF")])
        msg]
-      [:div.v-meta (bars cols) (when (seq cols) " · ") (:title r)]]
+      [:div.v-meta (bars cols voice per) (when (seq cols) " · ") (:title r)]]
      [:button.link {:title "Turn this rule off"
                     :on-click (fn [e] (.stopPropagation e) (>evt [:settings/toggle-rule rule]))} "mute"]]))
 
@@ -166,15 +186,18 @@
   (let [vs (<sub [:violations])
         {:keys [errors warnings penalty]} (<sub [:score])
         {:keys [cf cp]} (<sub [:exercise])
+        per (<sub [:per])
         focus (<sub [:focus])
         n (count cf)
-        filled (count (filter some? (take n cp)))]
+        expected (if (pos? n) (inc (* per (dec n))) 0)
+        filled (count (filter some? (take expected cp)))
+        expected (if (and (> per 1) (nil? (first cp))) (dec expected) expected)]
     [:div.card.results
      [:div.summary
       [:div
        [:h3 "Rule check"]
        [:div.hint (cond (zero? n) "Start with a cantus firmus (bottom of the page has Fux's)."
-                        (< filled n) (str "Counterpoint: " filled " of " n " notes")
+                        (< filled expected) (str "Counterpoint: " filled " of " expected " notes")
                         :else (str "Complete · " n " bars"))]]
       [:div.penalty {:class (cond (pos? errors) "bad" (pos? warnings) "warn" :else "good")}
        [:b penalty] [:small "penalty"]]]
@@ -182,7 +205,7 @@
        [:p.clean "No rule violations."]
        [:ul.violations
         (for [[i v] (map-indexed vector vs)]
-          ^{:key i} [violation-row i v focus])])
+          ^{:key i} [violation-row i v focus (<sub [:per])])])
      [:p.hint "Errors cost " (rules/penalty :error) ", warnings " (rules/penalty :warning)
       ". Nothing is blocked; tap a row to highlight it on the staff."]]))
 
@@ -232,8 +255,10 @@
           (for [entry lib/fux]
             ^{:key (:name entry)}
             [:button.chip {:on-click #(>evt [:load entry])} (subs (:name entry) 6)])
-          [:button.chip {:on-click #(>evt [:load lib/example])} "Example solution"]]
-         [:p.hint "Loading a cantus replaces the exercise (undo brings it back). The counterpoint is cleared."]
+          (for [entry lib/examples]
+            ^{:key (:name entry)}
+            [:button.chip {:on-click #(>evt [:load entry])} (str "Example: " (:name entry))])]
+         [:p.hint "Loading a cantus replaces the exercise (undo brings it back) and clears the counterpoint, keeping the species and position."]
          [:h3 "Saved"]
          (when (seq saved)
            [:ul.saved
@@ -273,7 +298,7 @@
        ^{:key g}
        [:div.card
         [:h3 label]
-        (for [{:keys [id title desc level presets]} (filter #(= g (:group %)) rules/rules)]
+        (for [{:keys [id title desc level presets species]} (filter #(= g (:group %)) rules/rules)]
           ^{:key id}
           [:label.toggle.rule
            [:input {:type "checkbox" :checked (contains? enabled id)
@@ -281,6 +306,7 @@
            [:span [:span.tag {:class (name level)} (name level)] " " title
             (when-not (contains? presets :relaxed) [:span.tag.preset "strict only"])
             (when-not (contains? presets :strict) [:span.tag.preset "relaxed only"])
+            (when species [:span.tag.preset "2nd species"])
             [:small desc]]])])
      [:div.card
       [:h3 "Settings"]

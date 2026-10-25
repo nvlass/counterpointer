@@ -22,15 +22,19 @@
 
 (defn- worst [m k level] (update m k #(if (and % (>= (rank %) (rank level))) % level)))
 
+(rf/reg-sub :per :<- [:exercise] (fn [e _] (events/per e)))
+
 (rf/reg-sub :marks
-  :<- [:violations]
-  (fn [vs _]
+  :<- [:violations] :<- [:per]
+  (fn [[vs per] _]
     (reduce
      (fn [acc {:keys [cols level kind voice]}]
-       (let [voices (if voice [voice] [:cf :cp])
-             acc (reduce (fn [a [v c]] (update a :notes worst [v c] level))
-                         acc (for [v voices c cols] [v c]))]
-         (case kind
+       (let [notes (case voice
+                     :cf (for [c cols] [:cf c])
+                     :cp (for [c cols] [:cp c])
+                     (mapcat (fn [c] [[:cp c] [:cf (quot c per)]]) cols))
+             acc (reduce #(update-in %1 [:notes] worst %2 level) acc notes)]
+         (case (when-not voice kind)
            :vertical (reduce #(update %1 :verts worst %2 level) acc cols)
            :motion (reduce #(update %1 :moves worst %2 level) acc (butlast cols))
            acc)))

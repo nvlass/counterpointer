@@ -7,11 +7,14 @@
 (def c-major {:mode :ionian :final {:l 0 :a 0}})
 (def d-dorian {:mode :dorian :final {:l 1 :a 0}})
 
-(defn example [key upper lower caption]
-  (let [e {:cf (lib/line key lower) :cp (lib/line key upper) :key key :position :above}
+(defn example [key upper lower caption & [species]]
+  (let [species (or species 1)
+        per (rules/per-bar species)
+        e {:cf (lib/line key lower) :cp (lib/line key upper) :key key :position :above :species species}
         {:keys [verts motions]} (rules/context e)]
     [:figure.example
-     [score/score (assoc e :n-cols (count (:cp e)) :verts verts :motions motions :labels true :compact true)]
+     [score/score (assoc e :n-cols (* per (count (:cf e))) :per per
+                         :verts verts :motions motions :labels true :compact true)]
      [:figcaption caption]]))
 
 (def intervals
@@ -37,9 +40,9 @@
     [:h3 "The idea"]
     [:p "A " [:b "cantus firmus"] " (CF, \"fixed song\") is a plain melody in whole notes. You write a second line, the "
      [:b "counterpoint"] " (CP), against it. The goal is two lines that are each good melodies and stay independent of each other."]
-    [:p "Fux (" [:i "Gradus ad Parnassum"] ", 1725) teaches it in five " [:b "species"] ", each adding rhythm:"]
+    [:p "Fux (" [:i "Gradus ad Parnassum"] ", 1725) teaches it in five " [:b "species"] ", each adding rhythm (1st and 2nd are implemented):"]
     [:ol
-     [:li [:b "1st, note against note (1:1)"] ": only consonances. This is the one implemented now."]
+     [:li [:b "1st, note against note (1:1)"] ": only consonances."]
      [:li [:b "2nd (2:1)"] ": two half notes per CF note; the second may be a passing dissonance."]
      [:li [:b "3rd (4:1)"] ": four quarters; passing and neighbour tones, the cambiata."]
      [:li [:b "4th, syncopation"] ": tied notes, suspensions that resolve down by step."]
@@ -85,6 +88,19 @@
     [:p "Both voices step into the final from opposite sides, and one of them by a half step. In modes without a half step below the final (Dorian, Mixolydian, Aeolian) the 7th is raised: this is " [:b "musica ficta"] ", an accidental singers added by convention. Phrygian already has the half step above (F→E), so its 7th stays."]]
 
    [:div.card
+    [:h3 "Second species (2:1)"]
+    [:p "Two half notes against each cantus note. The first half is the " [:b "downbeat"] " (strong), the second the " [:b "upbeat"] " (weak). Downbeats follow the first-species rules: consonant, and no parallel 5ths or octaves into them."]
+    [:p "The upbeat is where the new freedom is. A consonant upbeat may move by step or leap; a " [:b "dissonant"] " upbeat must be a " [:b "passing tone"] ": it fills in a 3rd by step, continuing in the same direction."]
+    [:div.examples
+     [example c-major "E4 F4 G4" "C4 B3" [:span [:b "Passing tone"] ": E–F–G over C, the 4th on the upbeat is fine because it passes by step between two consonances."] 2]
+     [example c-major "E4 F4 E4" "C4 A3" [:span [:b "Neighbour tone"] ": step away and back. Fux doesn't allow it in second species; the Relaxed preset does."] 2]
+     [example c-major "G4 E4 F4" "C4 D4" [:span [:b "Consonant leap"] ": a 3rd down on the upbeat, from one consonance to another. Leaps are only possible between consonances."] 2]
+     [example c-major "G4 E4 A4" "C4 D4" [:span [:b "5ths on successive downbeats"] ": 5 – 3 – 5 still sounds like parallel 5ths; the upbeat is too short to hide them."] 2]]
+    [:p "Other habits: start with a half rest (the counterpoint enters on the upbeat, with a perfect consonance), avoid repeating a note, and end on a whole note. A unison is allowed on an upbeat but not on a downbeat in the middle. The cadence is usually 5–6–8 above (B–C♯–D over E–D in D Dorian), or 5–3–1 below."]
+    [:div.examples
+     [example d-dorian "B3 C#4 D4" "E3 D3" [:span "The second-species cadence above: 5th, 6th (raised leading tone), octave."] 2]]]
+
+   [:div.card
     [:h3 "Other terms"]
     [:dl
      [:dt "Mode, final"] [:dd "The scale. The " [:b "final"] " is its home note: D for Dorian, E Phrygian, F Lydian, G Mixolydian, A Aeolian, C Ionian on the white keys. The cantus starts and ends on it. Ionian and Aeolian are today's major and natural minor."]
@@ -103,11 +119,12 @@
       [:div.rule-group
        [:div.group-label label]
        [:ul.rule-list
-        (for [{:keys [id title desc level presets]} (filter #(= g (:group %)) rules/rules)]
+        (for [{:keys [id title desc level presets species]} (filter #(= g (:group %)) rules/rules)]
           ^{:key id}
           [:li [:span.tag {:class (name level)} (name level)] " " [:b title]
            (when-not (contains? presets :relaxed) [:span.tag.preset "strict only"])
            (when-not (contains? presets :strict) [:span.tag.preset "relaxed only"])
+           (when species [:span.tag.preset "2nd species"])
            [:div desc]])]])]
 
    [:div.card

@@ -21,17 +21,22 @@
 (defn- center [position voice]
   (centers (if (= (= voice :cp) (not= position :below)) :treble :bass)))
 
-(defn from-library [{:keys [key cf cp]} position]
-  {:key key
-   :position position
-   :species 1
-   :cf (t/recenter (lib/line key cf) (center position :cf))
-   :cp (if cp (t/recenter (lib/line key cp) (center position :cp)) [])})
+(defn from-library
+  "A cantus alone goes in the given position and species; an example keeps its own, moved by the same octaves as its cantus."
+  [{:keys [key cf cp species]} position current-species]
+  (let [position (if cp :above position)
+        cf-line (lib/line key cf)
+        steps (t/recenter-steps cf-line (center position :cf))]
+    {:key key
+     :position position
+     :species (or species current-species 1)
+     :cf (t/shift cf-line steps)
+     :cp (if cp (t/shift (lib/line key cp) steps) [])}))
 
 (def initial-db
   {:view :write
    :settings default-settings
-   :exercise (from-library (first lib/fux) :above)
+   :exercise (from-library (first lib/fux) :above 1)
    :history []
    :future []
    :sel {:voice :cp :col 0}
@@ -114,18 +119,33 @@
           (assoc :exercise after :future [] :focus nil)
           (update :history #(vec (take-last 100 (conj % before))))))))
 
-(defn n-cols [{:keys [cf cp]}]
-  (min t/max-notes (max 8 (inc (max (count cf) (count cp))))))
+(defn per [e] (rules/per-bar (:species e)))
+
+(defn n-bars [{:keys [cf cp] :as e}]
+  (min t/max-notes (max 8 (inc (max (count cf) (Math/ceil (/ (count cp) (per e))))))))
+
+(defn n-cols
+  "Score columns: one per counterpoint slot."
+  [e]
+  (* (per e) (n-bars e)))
 
 (defn- note-at [db {:keys [voice col]}] (get-in db [:exercise voice col]))
 
+(defn- partner
+  "The note sounding against `voice` at `col` (a bar for the cantus, a slot for the counterpoint)."
+  [e voice col]
+  (if (= voice :cp)
+    (get-in e [:cf (quot col (per e))])
+    (get-in e [:cp (* col (per e))])))
+
 (defn- audition [db {:keys [voice col]}]
-  (let [{:keys [cf cp]} (:exercise db)
+  (let [e (:exercise db)
+        n (get-in e [voice col])
         dur 1.4]
     (case (get-in db [:settings :hear])
       :off nil
-      :note (when-let [n (get-in db [:exercise voice col])] [[(t/midi n) 0 dur]])
-      (seq (for [n [(get cf col) (get cp col)] :when n] [(t/midi n) 0 dur])))))
+      :note (when n [[(t/midi n) 0 dur]])
+      (seq (for [x [n (partner e voice col)] :when x] [(t/midi x) 0 dur])))))
 
 (defn- with-audition [db sel]
   (cond-> {:db db}
@@ -139,14 +159,16 @@
   [db {:keys [voice col]}]
   (let [{:keys [position] :as e} (:exercise db)
         line (voice e)
-        other (get-in e [({:cp :cf :cf :cp} voice) col])
+        other (partner e voice col)
         upper? (= (= voice :cp) (not= position :below))]
     (or (some :s (reverse (take col line)))
         (:s (get line col))
         (some-> other :s (+ (if upper? 4 -4)))
         (center position voice))))
 
-(defn- clamp-col [db col] (max 0 (min (dec (n-cols (:exercise db))) col)))
+(defn- clamp-col [db voice col]
+  (let [e (:exercise db)]
+    (max 0 (min (dec (if (= voice :cp) (n-cols e) (n-bars e))) col))))
 
 (rf/reg-event-fx :pick
   (fn [{:keys [db]} [_ voice col step]]
@@ -174,13 +196,13 @@
 (defn- type-letter [db sel l]
   (let [key (get-in db [:exercise :key])
         db (put-note db sel (t/nearest key l (ref-step db sel)))
-        next {:voice (:voice sel) :col (clamp-col db (inc (:col sel)))}
+        next {:voice (:voice sel) :col (clamp-col db (:voice sel) (inc (:col sel)))}
         db (assoc db :last-entry sel)]
     (assoc (with-audition db sel) :db (assoc db :sel next))))
 
 (defn- move-sel [db delta]
   (-> db
-      (update-in [:sel :col] #(clamp-col db (+ % delta)))
+      (update-in [:sel :col] #(clamp-col db (get-in db [:sel :voice]) (+ % delta)))
       (assoc :last-entry nil)))
 
 (defn- edit-target
@@ -219,7 +241,11 @@
 
 (rf/reg-event-db :switch-voice
   (fn [db _]
-    (update db :sel #(if % (update % :voice {:cp :cf :cf :cp}) {:voice :cp :col 0}))))
+    (let [p (per (:exercise db))]
+      (assoc db :last-entry nil
+             :sel (if-let [{:keys [voice col]} (:sel db)]
+                    (if (= voice :cp) {:voice :cf :col (quot col p)} {:voice :cp :col (* col p)})
+                    {:voice :cp :col 0})))))
 
 (rf/reg-event-db :undo
   (fn [db _]
@@ -253,6 +279,19 @@
         (-> (edit db #(assoc % voice line))
             (update :text-error dissoc voice))))))
 
+(defn- convert-species [cp from to]
+  (let [a (rules/per-bar from) b (rules/per-bar to)]
+    (cond (= a b) cp
+          (= a 1) (t/trim (vec (mapcat #(cons % (repeat (dec b) nil)) cp)))
+          :else (t/trim (mapv #(some identity %) (partition-all a cp))))))
+
+(rf/reg-event-db :set-species
+  (fn [db [_ species]]
+    (-> (edit db (fn [e] (-> e
+                             (assoc :species species)
+                             (update :cp convert-species (:species e) species))))
+        (assoc :sel {:voice :cp :col 0} :last-entry nil))))
+
 (rf/reg-event-db :set-key
   (fn [db [_ key]] (edit db #(assoc % :key key))))
 
@@ -269,7 +308,7 @@
     (let [position (get-in db [:exercise :position])]
       (-> (edit db (constantly (if (:exercise entry)
                                  (:exercise entry)
-                                 (from-library entry position))))
+                                 (from-library entry position (get-in db [:exercise :species])))))
           (assoc :sel {:voice :cp :col 0} :text-error {})))))
 
 (rf/reg-event-db :save-as
@@ -287,16 +326,21 @@
 
 (rf/reg-event-fx :play
   (fn [{:keys [db]} [_ which]]
-    (let [{:keys [cf cp]} (:exercise db)
-          len (max (count cf) (count cp))
+    (let [{:keys [cf cp] :as e} (:exercise db)
+          p (per e)
+          len (max (* p (count cf)) (count cp))
           dur (/ 60 (get-in db [:settings :tempo]))
           token (inc (get-in db [:play :token]))
-          voices (case which :cf [cf] :cp [cp] [cf cp])]
+          last-slot (dec (count cp))
+          cf-events (for [[i n] (map-indexed vector cf) :when n]
+                      [(t/midi n) (* i p dur) (* 0.96 p dur)])
+          cp-events (for [[i n] (map-indexed vector cp) :when n
+                          :let [whole? (and (= i last-slot) (zero? (mod i p)))]]
+                      [(t/midi n) (* i dur) (* 0.96 dur (if whole? p 1))])]
       (if (zero? len)
         {:db db}
         {:db (assoc db :play {:playing which :token token :col 0})
-         :audio/play (for [line voices [i n] (map-indexed vector line) :when n]
-                       [(t/midi n) (* i dur) (* 0.96 dur)])
+         :audio/play (case which :cf cf-events :cp cp-events (concat cf-events cp-events))
          :later (for [i (range 1 (inc len))]
                   {:ms (* 1000 dur i) :event [:play-tick token (when (< i len) i)]})}))))
 
@@ -323,7 +367,7 @@
   (fn [db [_ m]]
     (if-let [sel (:sel db)]
       (let [db (assoc (put-note db sel (t/spell (get-in db [:exercise :key]) m)) :last-entry sel)]
-        (assoc db :sel (update sel :col #(clamp-col db (inc %)))))
+        (assoc db :sel (update sel :col #(clamp-col db (:voice sel) (inc %)))))
       db)))
 
 (rf/reg-event-db :midi/note-off (fn [db _] db))

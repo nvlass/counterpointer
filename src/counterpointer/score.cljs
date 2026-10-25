@@ -2,7 +2,8 @@
   (:require [reagent.core :as r]
             [counterpointer.theory :as t]))
 
-;; Two staves: treble for the upper voice, bass for the lower one. One column per bar.
+;; Two staves: treble for the upper voice, bass for the lower one. One column per counterpoint
+;; slot (`per` slots in a bar); the cantus note of a bar sits on its first slot.
 ;; Vertical unit: 5px per diatonic step, so staff lines are 10px apart.
 
 (def sp 5)
@@ -14,8 +15,8 @@
 (def sharp-steps {:treble [38 35 39 36 33 37 34] :bass [24 21 25 22 19 23 20]})
 (def flat-steps {:treble [34 37 33 36 32 35 31] :bass [20 23 19 22 18 21 17]})
 
-(defn layout [{:keys [n-cols key compact]}]
-  (let [col-w (if compact 46 54)
+(defn layout [{:keys [n-cols key compact per]}]
+  (let [col-w (if (> per 1) (if compact 34 40) (if compact 46 54))
         top (if compact 34 46)
         gap (if compact 96 112)
         bottom (if compact 34 46)
@@ -40,23 +41,32 @@
     (concat (when (>= step (+ top 2)) (range (+ top 2) (inc step) 2))
             (when (<= step (- bottom 2)) (range (- bottom 2) (dec step) -2)))))
 
-(defn- whole-note-path [x y]
-  (let [rx 7.2 ry 5 a 3.4 b 2.6 phi -35
-        c (Math/cos (* phi (/ Math/PI 180))) s (Math/sin (* phi (/ Math/PI 180)))]
-    (str "M" (- x rx) "," y " a" rx "," ry " 0 1,0 " (* 2 rx) ",0 a" rx "," ry " 0 1,0 " (- (* 2 rx)) ",0 Z "
-         "M" (- x (* a c)) "," (- y (* a s))
-         " A" a "," b " " phi " 1,0 " (+ x (* a c)) "," (+ y (* a s))
-         " A" a "," b " " phi " 1,0 " (- x (* a c)) "," (- y (* a s)) " Z")))
+(defn- ellipse-path [x y rx ry phi]
+  (let [c (Math/cos (* phi (/ Math/PI 180))) s (Math/sin (* phi (/ Math/PI 180)))]
+    (str "M" (- x (* rx c)) "," (- y (* rx s))
+         " A" rx "," ry " " phi " 1,0 " (+ x (* rx c)) "," (+ y (* rx s))
+         " A" rx "," ry " " phi " 1,0 " (- x (* rx c)) "," (- y (* rx s)) " Z ")))
 
-(defn- note-el [lay staff i note key cls]
+(defn- head-path [x y dur]
+  (if (= dur :half)
+    (str (ellipse-path x y 6.4 4.5 -22) (ellipse-path x y 5.4 2.1 -22))
+    (str (ellipse-path x y 7.2 5 0) (ellipse-path x y 3.4 2.6 -35))))
+
+(def middle-step {:treble 34 :bass 22})
+
+(defn- note-el [lay staff i note key cls & [dur]]
   (let [x (cx lay i)
         y (y-of lay staff (:s note))
-        acc (when-not (t/in-mode? key note) (if (zero? (:a note)) "♮" (t/acc-sym (:a note))))]
+        acc (when-not (t/in-mode? key note) (if (zero? (:a note)) "♮" (t/acc-sym (:a note))))
+        up? (< (:s note) (middle-step staff))]
     [:g {:class cls}
      (for [st (ledger-steps staff (:s note))]
        ^{:key st} [:line.ledger {:x1 (- x 11) :x2 (+ x 11) :y1 (y-of lay staff st) :y2 (y-of lay staff st)}])
      (when acc [:text.acc {:x (- x 12) :y (+ y 5) :text-anchor "end"} acc])
-     [:path.head {:d (whole-note-path x y) :fill-rule "evenodd"}]]))
+     [:path.head {:d (head-path x y dur) :fill-rule "evenodd"}]
+     (when (= dur :half)
+       (let [sx (if up? (+ x 5.7) (- x 5.7))]
+         [:line.stem {:x1 sx :x2 sx :y1 (if up? (- y 1.5) (+ y 1.5)) :y2 (if up? (- y 33) (+ y 33))}]))]))
 
 (defn- clef
   "Clef glyphs differ a lot between fonts, so measure the glyph and scale it into the given box."
@@ -113,9 +123,13 @@
   "`marks` is {:notes {[voice col] level} :verts {col level} :moves {col level}}, from violations."
   [_]
   (let [hover (r/atom nil)]
-    (fn [{:keys [cf cp key position n-cols verts motions marks sel highlight playing on-pick labels compact]
-          :as props}]
-      (let [lay (layout props)
+    (fn [{:keys [cf cp key position n-cols verts motions marks sel highlight playing on-pick labels compact per]
+          :or {per 1} :as props}]
+      (let [props (assoc props :per per)
+            lay (layout props)
+            final-slot (* per (dec (count cf)))
+            cp-dur (fn [i] (if (or (= per 1) (and (= i final-slot) (nil? (get cp (inc i))))) :whole :half))
+            slot-of {:cf #(* per %) :cp identity}
             above? (not= position :below)
             staff-of {:cp (if above? :treble :bass) :cf (if above? :bass :treble)}
             voice-of {(staff-of :cp) :cp (staff-of :cf) :cf}
@@ -131,37 +145,49 @@
                      :on-click (when on-pick
                                  #(let [[x y] (event-point %)]
                                     (when-let [{:keys [staff col step]} (pick-at lay props x y)]
-                                      (on-pick (voice-of staff) col step))))}
+                                      (let [v (voice-of staff)]
+                                        (on-pick v (if (= v :cf) (quot col per) col) step)))))}
          (for [i highlight]
            ^{:key (str "h" i)}
            [:rect.hl {:x (+ x0 (* col-w i)) :y top-y :width col-w :height (- bot-y top-y) :rx 6}])
          (when playing
            [:rect.playing {:x (+ x0 (* col-w playing)) :y top-y :width col-w :height (- bot-y top-y) :rx 6}])
          (when-let [{:keys [voice col]} sel]
-           (let [y0 (staff-y lay (staff-of voice))]
-             [:rect.cursor {:x (+ x0 (* col-w col) 3) :y (- y0 22) :width (- col-w 6) :height 84 :rx 6}]))
+           (let [y0 (staff-y lay (staff-of voice))
+                 span (if (= voice :cf) per 1)]
+             [:rect.cursor {:x (+ x0 (* col-w ((slot-of voice) col)) 3) :y (- y0 22)
+                            :width (- (* col-w span) 6) :height 84 :rx 6}]))
          [staff-el lay :treble key]
          [staff-el lay :bass key]
-         (for [i (range 1 n-cols) staff [:treble :bass] :let [x (+ x0 (* col-w i)) y0 (staff-y lay staff)]]
+         (for [i (range per n-cols per) staff [:treble :bass] :let [x (+ x0 (* col-w i)) y0 (staff-y lay staff)]]
            ^{:key (str "b" i (name staff))}
            [:line.bar {:x1 x :x2 x :y1 y0 :y2 (+ y0 40)}])
          (for [voice [:cf :cp]
                [i note] (map-indexed vector (lines voice))
                :when note]
            ^{:key (str (name voice) i)}
-           [note-el lay (staff-of voice) i note key
+           [note-el lay (staff-of voice) ((slot-of voice) i) note key
             (str "note " (name voice) " " (some-> (get-in marks [:notes [voice i]]) name)
-                 (when (= sel {:voice voice :col i}) " sel"))])
+                 (when (= sel {:voice voice :col i}) " sel"))
+            (if (= voice :cf) :whole (cp-dur i))])
+         (when (and (> per 1) (nil? (first cp)) (second cp))
+           (let [y (+ (staff-y lay (staff-of :cp)) 20)]
+             [:rect.rest {:x (- (cx lay 0) 6) :y (- y 5) :width 12 :height 5}]))
          (when-let [{:keys [staff col step]} (and on-pick @hover)]
-           (let [note (get-in lines [(voice-of staff) col])]
+           (let [v (voice-of staff)
+                 c (if (= v :cf) (quot col per) col)
+                 note (get-in lines [v c])]
              (when-not (= step (:s note))
-               [note-el lay staff col {:s step :a (t/default-alt key (mod step 7))} key "note ghost"])))
+               [note-el lay staff ((slot-of v) c) {:s step :a (t/default-alt key (mod step 7))} key "note ghost"
+                (if (= v :cf) :whole (cp-dur c))])))
          (when labels
            [:g.labels
             (for [v verts :when v :let [i (:i v)]]
               ^{:key (str "v" i)}
               [:text {:x (cx lay i) :y (+ mid 4) :text-anchor "middle"
-                      :class (str "iv " (name (:cons v)) " " (some-> (get-in marks [:verts i]) name))}
+                      :class (let [mark (get-in marks [:verts i])
+                                   ok-weak? (and (pos? (:beat v)) (= :dissonant (:cons v)) (not mark))]
+                               (str "iv " (if ok-weak? "passing" (name (:cons v))) " " (some-> mark name)))}
                [:title (str (t/interval-name v) ": " (t/interval-long v))]
                (:num v)])
             (for [m motions :let [i (:i m)]]

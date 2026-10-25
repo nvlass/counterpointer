@@ -221,6 +221,11 @@ svg.score.interactive { cursor: crosshair; }
 .score .note.error .head, .score .note.error .acc { fill: var(--bad); }
 .score .note.sel .head { fill: var(--accent); }
 .score .note.ghost { opacity: .35; pointer-events: none; }
+.score .stem { stroke: var(--ink); stroke-width: 1.3; }
+.score .note.warning .stem { stroke: var(--warn); }
+.score .note.error .stem { stroke: var(--bad); }
+.score .note.sel .stem, .score .note.ghost .stem { stroke: var(--accent); }
+.score rect.rest { fill: var(--ink-2); }
 .score .note.ghost .head { fill: var(--accent); }
 .score rect.cursor { fill: var(--accent-soft); }
 .score rect.hl { fill: var(--warn-soft); }
@@ -230,6 +235,7 @@ svg.score.interactive { cursor: crosshair; }
 .score .labels .iv.perfect { fill: var(--ink); }
 .score .labels .iv.imperfect { fill: var(--good); }
 .score .labels .iv.dissonant { fill: var(--bad); }
+.score .labels .iv.passing { fill: var(--ink-3); font-weight: 400; }
 .score .labels .mv { font-size: 11px; fill: var(--ink-3); font-style: italic; }
 .score .labels .warning { fill: var(--warn); font-weight: 700; }
 .score .labels .error { fill: var(--bad); font-weight: 700; }

@@ -8,8 +8,11 @@
 
 (defn n [s] (first (lib/line dorian s)))
 
-(defn ex [cf cp & [position]]
-  {:cf (lib/line dorian cf) :cp (lib/line dorian cp) :key dorian :position (or position :above)})
+(defn ex [cf cp & [position species]]
+  {:cf (lib/line dorian cf) :cp (lib/line dorian cp) :key dorian :position (or position :above)
+   :species (or species 1)})
+
+(defn ex2 [cf cp] (ex cf cp :above 2))
 
 (defn rule-ids [exercise preset]
   (set (map :rule (r/analyze exercise (r/preset-rules preset) true))))
@@ -47,9 +50,39 @@
                 vs (remove #(= :info (:level %)) (r/analyze e (r/preset-rules :strict) true))]]
     (is (empty? vs) [name (map :msg vs)])))
 
-(deftest example-solution-is-clean
-  (let [{:keys [cf cp]} lib/example]
-    (is (empty? (rule-ids (ex cf cp) :strict)))))
+(deftest example-solutions-are-clean
+  (doseq [{:keys [cf cp key species name]} lib/examples
+          preset [:strict :relaxed]
+          :let [e {:cf (lib/line key cf) :cp (lib/line key cp) :key key :position :above :species species}
+                vs (r/analyze e (r/preset-rules preset) true)]]
+    (is (empty? vs) [name preset (map :msg vs)])))
+
+(deftest second-species
+  (testing "rest at the start; the first sounding note must be perfect"
+    (is (not (contains? (rule-ids (ex2 "D3 E3" "- A3 G3") :strict) :start)))
+    (is (contains? (rule-ids (ex2 "D3 E3" "- F3 G3") :strict) :start)))
+  (testing "dissonant upbeats: passing ok, neighbour only relaxed, leaps never"
+    (let [passing (ex2 "D3 C3" "F3 G3 A3")
+          neighbor (ex2 "D3 C3" "F3 G3 F3")
+          leaped (ex2 "D3 C3" "F3 G3 E3")]
+      (is (= #{} (set (filter #{:weak-dissonance :weak-dissonance-passing :consonance} (rule-ids passing :strict)))))
+      (is (contains? (rule-ids neighbor :strict) :weak-dissonance-passing))
+      (is (not (contains? (rule-ids neighbor :relaxed) :weak-dissonance)))
+      (is (contains? (rule-ids leaped :relaxed) :weak-dissonance))))
+  (testing "dissonant downbeat"
+    (is (contains? (rule-ids (ex2 "D3 E3" "F3 A3 A3") :relaxed) :consonance)))
+  (testing "successive downbeat 5ths and upbeat-to-downbeat parallels"
+    (is (contains? (rule-ids (ex2 "D3 E3" "A3 F3 B3") :relaxed) :downbeat-parallels))
+    (is (contains? (rule-ids (ex2 "D3 E3" "F3 A3 B3") :relaxed) :parallel-perfect)))
+  (testing "upbeat unison is fine, downbeat unison in the middle isn't"
+    (is (not (contains? (rule-ids (ex2 "D3 F3 E3 D3" "A3 D3 A3 C4 G3 A3 D4") :strict) :unison)))
+    (is (contains? (rule-ids (ex2 "D3 F3 E3 D3" "A3 B3 F3 A3 G3 A3 D4") :strict) :unison)))
+  (testing "cadence from the penultimate upbeat, and the leading tone there is in mode"
+    (let [ids (rule-ids (ex2 "D3 E3 D3" "A3 F3 B3 C#4 D4") :relaxed)]
+      (is (not (contains? ids :cadence-step)))
+      (is (not (contains? ids :leading-tone)))
+      (is (not (contains? ids :mode))))
+    (is (contains? (rule-ids (ex2 "D3 E3 D3" "A3 F3 B3 C#4 D4 E4") :relaxed) :final-whole))))
 
 (deftest detects
   (testing "parallel 5ths and 8ves"

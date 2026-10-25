@@ -153,13 +153,15 @@
 
 (defn shift [line steps] (mapv #(when % (update % :s + steps)) line))
 
-(defn recenter
-  "Moves a line by octaves so its average step sits near `center`."
+(defn recenter-steps
+  "The octave shift (in steps) that puts the line's average step nearest `center`."
   [line center]
   (let [ss (keep :s line)]
     (if (empty? ss)
-      line
-      (shift line (* 7 (Math/round (/ (- center (/ (reduce + ss) (count ss))) 7)))))))
+      0
+      (* 7 (Math/round (/ (- center (/ (reduce + ss) (count ss))) 7))))))
+
+(defn recenter [line center] (shift line (recenter-steps line center)))
 
 (defn note->text [key n]
   (if-not n

@@ -13,7 +13,7 @@ A trainer for species counterpoint. Enter a cantus firmus (or load one of Fux's)
 - **Library**: Fux's six cantus firmi (one per mode), an example solution, and your saved exercises.
 - Modes: Dorian, Phrygian, Lydian, Mixolydian, Aeolian, Ionian, on any final with up to six sharps or flats.
 
-Only first species (1:1) so far.
+First species (1:1) and second species (2:1: half notes, passing tones on the upbeat, an opening half rest, downbeat-to-downbeat checks). Switching species keeps the counterpoint's downbeats.
 
 ## Develop
 
