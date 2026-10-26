@@ -6,6 +6,7 @@
             [counterpointer.events]
             [counterpointer.subs]
             [counterpointer.views :as views]
+            [counterpointer.guard :as guard]
             [counterpointer.audio :as audio]
             [counterpointer.storage :as storage]))
 
@@ -15,7 +16,7 @@
   (rf/clear-subscription-cache!)
   (when-not @root
     (reset! root (rdc/create-root (js/document.getElementById "app"))))
-  (rdc/render @root [views/app]))
+  (rdc/render @root [guard/guard [views/app]]))
 
 (def captured #{"ArrowUp" "ArrowDown" "ArrowLeft" "ArrowRight" " " "Tab" "Backspace"})
 
